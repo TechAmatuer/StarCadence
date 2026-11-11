@@ -22,6 +22,7 @@ using NINA.Sequencer.SequenceItem.FilterWheel;
 using NINA.Sequencer.SequenceItem.Imaging;
 using NINA.Sequencer.SequenceItem.Platesolving;
 using NINA.Sequencer.SequenceItem.Telescope;
+using NINA.Sequencer.Utility;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using StarCadence.Core.Run;
