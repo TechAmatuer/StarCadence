@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>StarCadence.Core</RootNamespace>
+    <AssemblyName>StarCadence.Core</AssemblyName>
+    <Description>Night planner for variable-star and exoplanet-transit photometry: time windows, repeat cadence, target sources, exposure per star and filter.</Description>
+  </PropertyGroup>
+</Project>

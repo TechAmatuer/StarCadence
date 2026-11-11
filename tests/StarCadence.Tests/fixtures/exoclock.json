@@ -1,0 +1,6 @@
+{
+ "HAT-P-32b": {"name": "HAT-P-32b", "priority": "high", "total_observations_recent": 2, "current_oc_min": 0.5, "depth_r_mmag": 22.0, "duration_hours": 3.1, "ephem_mid_time": 2455867.402743, "ephem_mid_time_e1": 0.00005, "ephem_mid_time_format": "BJD_TDB", "ephem_period": 2.15000820, "ephem_period_e1": 0.00000013, "ra_j2000": "02:04:10.2780", "dec_j2000": "+46:41:16.21", "v_mag": 11.29, "r_mag": 11.1},
+ "Faint-1b": {"name": "Faint-1b", "priority": "high", "depth_r_mmag": 10, "duration_hours": 2, "ephem_mid_time": 2459000.5, "ephem_period": 1.5, "ra_j2000": "01:00:00", "dec_j2000": "+30:00:00", "v_mag": 15.5, "r_mag": 15.2},
+ "Shallow-1b": {"name": "Shallow-1b", "priority": "medium", "depth_r_mmag": 2, "duration_hours": 2, "ephem_mid_time": 2459000.5, "ephem_period": 1.5, "ra_j2000": "01:00:00", "dec_j2000": "+30:00:00", "v_mag": 10.5},
+ "LowPri-1b": {"name": "LowPri-1b", "priority": "low", "depth_r_mmag": 20, "duration_hours": 2, "ephem_mid_time": 2459000.5, "ephem_period": 1.5, "ra_j2000": "01:00:00", "dec_j2000": "+30:00:00", "v_mag": 10.5}
+}

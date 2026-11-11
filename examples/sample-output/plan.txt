@@ -1,0 +1,70 @@
+Night of 2026-12-03 at My observatory  (times America/New_York)
+Dark from 17:38 to 06:01; Moon 21% lit
+14 blocks, 14 targets from 18 candidates; 41% of the dark time used
+
+17:38-17:41  V Sge                  Variable  alt 57->57  B 1x40s  V 1x10s  R 1x5s  I 1x5s
+      score 3.30 (Cadence 1.00, Alert 0.70, Priority 1.00)
+      - saturates if brighter than B 10.8, V 10.2, R 9.8, I 9.4 (catalogue maximum 8.6): re-plan after an outburst alert
+      - AAVSO alert or campaign target
+      - sample row
+17:41-17:44  SS Cyg                 Variable  alt 80->80  B 1x40s  V 1x12s
+      score 3.23 (Cadence 0.99, Alert 0.70, Priority 1.00)
+      - saturates if brighter than B 11.1, V 10.5 (catalogue maximum 8.0): re-plan after an outburst alert
+      - AAVSO alert or campaign target
+      - sample row
+17:44-17:46  WZ Sge                 Variable  alt 51->51  V 1x10s
+      score 2.44 (Cadence 1.00, SettingSoonest 0.85, Efficiency 1.00)
+      - saturates if brighter than V 10.2 (catalogue maximum 7.0): re-plan after an outburst alert
+      - sample row
+17:46-17:48  CH Cyg                 Variable  alt 55->55  B 1x2s  V 1x1s
+      score 2.42 (Cadence 1.00, SettingSoonest 0.78, Efficiency 1.00)
+      - saturates if brighter than B 7.7, V 7.7 (catalogue maximum 5.6): re-plan after an outburst alert
+      - sample row
+17:48-17:50  RU Peg                 Variable  alt 62->62  V 1x12s
+      score 2.38 (Cadence 1.00, SettingSoonest 0.70, Efficiency 1.00)
+      - saturates if brighter than V 10.4 (catalogue maximum 9.5): re-plan after an outburst alert
+      - sample row
+17:50-17:53  AM Her                 Variable  alt 44->43  V 1x120s
+      score 2.21 (Cadence 0.83, SettingSoonest 0.88, Efficiency 0.99)
+      - saturates if brighter than V 13.0 (catalogue maximum 12.3): re-plan after an outburst alert
+      - sample row
+17:53-17:57  GK Per                 Variable  alt 38->39  B 1x60s  V 1x20s  R 1x10s  I 1x8s
+      score 1.97 (Cadence 1.00, Efficiency 0.98, Priority 0.50)
+      - saturates if brighter than B 11.4, V 10.8, R 10.4, I 10.0 (catalogue maximum 10.0): re-plan after an outburst alert
+      - sample row sample row (duplicate on purpose: merged)
+17:57-17:59  chi Cyg                Variable  alt 54->54  V 1x1s  I 1x1s
+      score 1.69 (SettingSoonest 0.83, Cadence 0.33, Efficiency 1.00)
+      - saturates if brighter than V 7.8, I 7.7 (catalogue maximum 3.3): re-plan after an outburst alert
+      - sample row
+18:25-18:27  Mira                   Variable  alt 30->30  V 1x1s  I 1x1s
+      score 1.58 (SettingSoonest 1.00, Efficiency 1.00, Priority 0.50)
+      - V: may saturate even at the shortest exposure: defocus, or lower minExposure
+      - I: may saturate even at the shortest exposure: defocus, or lower minExposure
+      - saturates if brighter than V 7.7, I 7.7 (catalogue maximum 2.0): re-plan after an outburst alert
+      - sample row
+19:33-19:35  Z Cam                  Variable  alt 30->30  V 1x25s
+      score 2.35 (Cadence 1.00, SettingSoonest 1.00, Efficiency 1.00)
+      - saturates if brighter than V 11.2 (catalogue maximum 10.0): re-plan after an outburst alert
+      - sample row
+20:37-20:40  SU UMa                 Variable  alt 30->30  V 1x60s
+      score 2.48 (Cadence 1.00, SettingSoonest 1.00, Efficiency 1.00)
+      - saturates if brighter than V 12.1 (catalogue maximum 11.2): re-plan after an outburst alert
+      - sample row
+22:30-22:32  U Gem                  Variable  alt 30->30  V 1x12s
+      score 2.12 (Cadence 0.69, SettingSoonest 1.00, Efficiency 1.00)
+      - saturates if brighter than V 10.6 (catalogue maximum 8.2): re-plan after an outburst alert
+      - sample row
+23:33-04:02  Sample-1b              Transit  [fixed]  alt 81->48  R 1463x8s
+      score 1.85 (Priority 0.80, LowCoverage 0.75, Slew 1.00); transit mid 06:48 UTC
+      - ExoClock priority high, depth 18 mmag
+04:02-04:04  R Leo                  Variable  alt 59->59  V 1x1s  I 1x1s
+      score 1.68 (SettingSoonest 0.84, Efficiency 1.00, Cadence 0.27)
+      - I: may saturate even at the shortest exposure: defocus, or lower minExposure
+      - saturates if brighter than V 7.7, I 7.7 (catalogue maximum 4.4): re-plan after an outburst alert
+      - sample row
+
+Not planned (4):
+  Example EB (check VSX first): no event or transit window tonight
+  T CrB: not observable tonight (too low)
+  R CrB: not observable tonight (too low)
+  Sample-2b: transit mid 10:40 UTC: window runs outside dark time

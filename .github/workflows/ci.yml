@@ -1,0 +1,66 @@
+name: build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build
+        run: dotnet build -c Release
+      - name: Tests
+        run: dotnet run --project tests/StarCadence.Tests -c Release --no-build
+      - name: Plan the example night
+        shell: bash
+        run: |
+          dotnet run --project src/StarCadence.Cli -c Release --no-build -- plan --config examples/config.json --date 2026-12-03 --out ci-out --formats txt,json,csv,ekos,nina
+          test -s ci-out/plan.txt && test -s ci-out/ekos/plan.esl && test -s ci-out/nina-target-scheduler.csv
+          dotnet run --project src/StarCadence.Cli -c Release --no-build -- version
+
+  publish:
+    name: program (${{ matrix.rid }})
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - { rid: win-x64, os: windows-latest }
+          - { rid: osx-arm64, os: macos-latest }
+          - { rid: linux-x64, os: ubuntu-latest }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish a self-contained program
+        run: dotnet publish src/StarCadence.Cli -c Release -r ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -o dist/${{ matrix.rid }}
+      - name: Add the example and docs
+        shell: bash
+        run: cp -r examples README.md LICENSE.txt NOTICE.md dist/${{ matrix.rid }}/
+      - name: Smoke test
+        shell: bash
+        run: |
+          cd dist/${{ matrix.rid }}
+          ./starcadence version
+          ./starcadence plan --config examples/config.json --date 2026-12-03 --out smoke --formats txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starcadence-${{ matrix.rid }}
+          path: |
+            dist/${{ matrix.rid }}
+            !dist/${{ matrix.rid }}/smoke

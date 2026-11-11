@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>StarCadence.Cli</RootNamespace>
+    <AssemblyName>starcadence</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\StarCadence.Core\StarCadence.Core.csproj" />
+  </ItemGroup>
+</Project>

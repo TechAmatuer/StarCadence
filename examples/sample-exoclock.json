@@ -1,0 +1,6 @@
+{
+  "_comment": "Made-up sample in ExoClock's format, for trying StarCadence offline. Run 'starcadence fetch' with sources.exoClock = true for real ephemerides.",
+  "Sample-1b": {"name": "Sample-1b", "priority": "high", "total_observations_recent": 1, "current_oc_min": 1.0, "depth_r_mmag": 18.0, "duration_hours": 2.4, "ephem_mid_time": 2461378.79, "ephem_mid_time_e1": 0.0004, "ephem_mid_time_format": "BJD_TDB", "ephem_period": 3.2, "ephem_period_e1": 0.000002, "ra_j2000": "05:10:00.0", "dec_j2000": "+40:00:00", "v_mag": 11.6, "r_mag": 11.3},
+  "Sample-2b": {"name": "Sample-2b", "priority": "medium", "total_observations_recent": 6, "current_oc_min": 0.5, "depth_r_mmag": 12.0, "duration_hours": 1.9, "ephem_mid_time": 2461378.95, "ephem_mid_time_e1": 0.0003, "ephem_mid_time_format": "BJD_TDB", "ephem_period": 1.75, "ephem_period_e1": 0.000001, "ra_j2000": "07:30:00.0", "dec_j2000": "+25:00:00", "v_mag": 12.4, "r_mag": 12.1},
+  "Sample-3b": {"name": "Sample-3b", "priority": "low", "depth_r_mmag": 25.0, "duration_hours": 2.0, "ephem_mid_time": 2461378.9, "ephem_period": 2.1, "ra_j2000": "04:00:00", "dec_j2000": "+30:00:00", "v_mag": 10.5}
+}

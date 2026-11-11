@@ -1,0 +1,17 @@
+<Project>
+  <!-- Shared settings. net8.0 so the same core library can load inside N.I.N.A. 3.x (a .NET 8 Windows app);
+       RollForward lets the tools run on any newer .NET runtime (9, 10, ...) on Windows, macOS or Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <RollForward>Major</RollForward>
+    <Version>0.1.0</Version>
+    <Authors>StarCadence contributors</Authors>
+    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NuGetAudit>false</NuGetAudit>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+</Project>

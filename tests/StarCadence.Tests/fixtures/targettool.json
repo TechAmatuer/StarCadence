@@ -1,0 +1,8 @@
+{"targets": [
+ {"star_name": "SS Cyg", "ra": 325.67835, "dec": 43.58608, "var_type": "UGSS", "min_mag": 12.4, "min_mag_band": "V", "max_mag": 7.7, "max_mag_band": "V", "period": 0.27513, "obs_cadence": 1.0, "obs_mode": "photometry", "obs_section": ["Alerts / Campaigns", "Cataclysmic Variables"], "other_info": "[[AAVSO Alert Notice 999]] time series wanted", "filter": "V,B", "priority": true, "last_data_point": 2461350.6, "solar_conjunction": false},
+ {"star_name": "SS Cyg", "ra": 325.67835, "dec": 43.58608, "var_type": "UGSS", "min_mag": 12.4, "max_mag": 7.7, "obs_cadence": 0.5, "obs_mode": "photometry", "obs_section": ["Alerts / Campaigns"], "filter": "I", "priority": false, "last_data_point": "2026-11-09 03:12:00", "solar_conjunction": false},
+ {"star_name": "R CrB", "ra": "15:48:34.4", "dec": "+28:09:24", "var_type": "RCB", "min_mag": 14.8, "max_mag": 5.7, "obs_cadence": 3, "obs_mode": "all", "obs_section": ["Alerts / Campaigns"], "filter": "V", "priority": false, "last_data_point": null, "solar_conjunction": false},
+ {"star_name": "Spectro Star", "ra": 10.0, "dec": 10.0, "obs_mode": "spectroscopy", "obs_section": ["Alerts / Campaigns"]},
+ {"star_name": "Sun Star", "ra": 220.0, "dec": -15.0, "obs_mode": "photometry", "solar_conjunction": true},
+ {"star_name": "No Coords"}
+]}

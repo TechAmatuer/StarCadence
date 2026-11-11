@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A self-contained test runner (no NuGet test framework needed): dotnet run, in this folder. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>StarCadence.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\StarCadence.Core\StarCadence.Core.csproj" />
+    <None Include="fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
