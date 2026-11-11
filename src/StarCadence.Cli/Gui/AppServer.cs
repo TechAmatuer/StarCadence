@@ -57,6 +57,7 @@ static class AppServer {
         builder.WebHost.UseKestrel(o => o.Listen(IPAddress.Loopback, port));
         var app = builder.Build();
         var state = new Session(dataDir, cfgPath, firstRun);
+        var runs = new RunService();
 
         // Only this computer, only with the token for changes.
         app.Use(async (ctx, next) => {
@@ -72,7 +73,11 @@ static class AppServer {
         app.MapGet("/api/ping", () => Results.Text("starcadence"));
         app.MapGet("/api/state", () => Json(state.Describe()));
         app.MapPost("/api/heartbeat", () => Results.Ok());
-        app.MapPost("/api/quit", (IHostApplicationLifetime life) => { _ = Task.Delay(300).ContinueWith(_ => life.StopApplication()); return Results.Ok(); });
+        app.MapPost("/api/quit", (IHostApplicationLifetime life) => {
+            if (runs.Running) return Error("A night is being run. Stop it first, then quit.");
+            _ = Task.Delay(300).ContinueWith(_ => life.StopApplication());
+            return Results.Ok();
+        });
 
         app.MapPost("/api/config", async (HttpContext ctx) => {
             Config? cfg;
@@ -176,6 +181,18 @@ static class AppServer {
             return Json(state.Describe());
         });
 
+        app.MapGet("/api/run/status", () => Json(runs.Status()));
+        app.MapPost("/api/run/start", async (HttpContext ctx) => {
+            var req = await Body<RunRequest>(ctx) ?? new RunRequest();
+            Config cfg;
+            try { cfg = state.LoadConfig(); } catch (Exception e) when (e is InvalidDataException or JsonException) { return Error(e.Message); }
+            if (req.Mode != "indi" && req.Mode != "simulate") return Error("Mode must be indi or simulate.");
+            try { await runs.StartAsync(cfg, dataDir, req, blocking: false); }
+            catch (Exception e) when (e is IOException or InvalidOperationException or TimeoutException or System.Net.Sockets.SocketException) { return Error(e.Message); }
+            return Json(runs.Status());
+        });
+        app.MapPost("/api/run/stop", async () => { await runs.StopAsync(); return Json(runs.Status()); });
+
         app.MapPost("/api/record", async (HttpContext ctx) => {
             var req = await Body<PathRequest>(ctx);
             var full = req?.Path is null ? null : Inside(dataDir, req.Path);
@@ -205,6 +222,7 @@ static class AppServer {
             _ = Task.Run(async () => {
                 while (!life.ApplicationStopping.IsCancellationRequested) {
                     await Task.Delay(TimeSpan.FromSeconds(20));
+                    if (runs.Running) continue;   // never stop while a night is being run
                     var idle = DateTime.UtcNow - state.LastSeen;
                     // Stop once the page has gone away (browsers slow background tabs to about one heartbeat a minute).
                     if (state.EverSeen && idle > TimeSpan.FromMinutes(4)) life.StopApplication();

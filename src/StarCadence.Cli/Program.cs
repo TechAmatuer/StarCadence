@@ -20,6 +20,7 @@ try {
         "init" => Commands.Init(a),
         "fetch" => await Commands.Fetch(a),
         "plan" => await Commands.Plan(a),
+        "run" => await Commands.Run(a),
         "record" => Commands.Record(a),
         "exposures" => Commands.Exposures(a),
         "ephem" => Commands.Ephem(a),
@@ -66,6 +67,8 @@ static class Commands {
               starcadence fetch     [--config FILE]                download AAVSO Target Tool and ExoClock data
               starcadence plan      [--config FILE] [--date YYYY-MM-DD] [--from now|ISO-TIME]
                                     [--out FOLDER] [--formats txt,json,csv,ekos,nina] [--fetch]
+              starcadence run       [--config FILE] --indi [HOST[:PORT]] [--no-park]      run tonight through an INDI server
+              starcadence run       [--config FILE] --simulate [--from TIME --speed N]  run tonight with no hardware (a rehearsal)
               starcadence record    [--config FILE] --target NAME [--utc ISO-TIME]
                                     or --plan plan.json [--until ISO-TIME]   mark observations done
               starcadence exposures [--config FILE] --mag M [--bright M]   exposure per filter for a star
@@ -125,6 +128,36 @@ static class Commands {
         Console.WriteLine(a.Has("quiet") ? run.Text.Split('\n')[2] : run.Text);
         foreach (var p in run.Files) Console.WriteLine("Wrote " + p);
         return 0;
+    }
+
+    public static async Task<int> Run(Args a) {
+        var (cfg, dir) = LoadConfig(a);
+        var req = new RunRequest { Park = !a.Has("no-park") };
+        if (a.Has("indi")) {
+            req.Mode = "indi";
+            var spec = a.Get("indi");
+            if (!string.IsNullOrWhiteSpace(spec)) {
+                var parts = spec.Split(':');
+                req.Host = parts[0];
+                if (parts.Length > 1 && int.TryParse(parts[1], out var port)) req.Port = port;
+            }
+        } else if (a.Has("simulate")) {
+            req.Mode = "simulate";
+            if (a.Get("from") is string f) req.FromUtc = f.Equals("now", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : ParseTime(f);
+            if (double.TryParse(a.Get("speed"), NumberStyles.Float, CultureInfo.InvariantCulture, out var sp)) req.Speed = sp;
+        } else {
+            Console.Error.WriteLine("Say how to run: --indi [host:port] for a real observatory, or --simulate for a rehearsal without hardware.");
+            return 1;
+        }
+        var svc = new RunService();
+        using var stop = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; Console.WriteLine("Stopping after the current exposure..."); _ = svc.StopAsync(); };
+        try { await svc.StartAsync(cfg, dir, req, blocking: true, echo: Console.WriteLine); }
+        catch (Exception e) when (e is IOException or InvalidOperationException or TimeoutException or System.Net.Sockets.SocketException) {
+            Console.Error.WriteLine("Could not start: " + e.Message);
+            return 1;
+        }
+        return svc.Error is null ? 0 : 1;
     }
 
     public static int Record(Args a) {

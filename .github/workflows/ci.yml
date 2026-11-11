@@ -57,6 +57,66 @@ jobs:
           dotnet run --project src/StarCadence.Cli -c Release --no-build -- app --data ci-ui --port 8798 --no-browser > ui.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8798/api/ping && break; sleep 2; done
           python tests/ui/app_ui_test.py http://127.0.0.1:8798/
+      - name: Run a night against a real INDI server (simulated mount, filter wheel and camera)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq indi-bin > /dev/null
+          indiserver -p 7624 indi_simulator_telescope indi_simulator_ccd indi_simulator_wheel > indiserver.log 2>&1 &
+          sleep 3
+          STARCADENCE_INDI=localhost:7624 dotnet run --project tests/StarCadence.Tests -c Release --no-build -- RealIndi
+          mkdir -p ci-indi && cp examples/config.json examples/sample-targets.csv examples/sample-exoclock.json ci-indi/
+          timeout 120 dotnet run --project src/StarCadence.Cli -c Release --no-build -- run --config ci-indi/config.json --simulate --from 2026-12-04T02:00:00Z --speed 3000 | tail -5
+      - name: Rehearse a night without hardware (simulation, every system)
+        shell: bash
+        run: |
+          mkdir -p ci-sim && cp examples/config.json examples/sample-targets.csv examples/sample-exoclock.json ci-sim/
+          dotnet run --project src/StarCadence.Cli -c Release --no-build -- run --config ci-sim/config.json --simulate --from 2026-12-04T02:00:00Z --speed 6000 > sim.log 2>&1 || true
+          grep -q "done (" sim.log && grep -q "Run ended" sim.log
+          tail -3 sim.log
+
+  nina:
+    name: N.I.N.A. plug-in (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build the plug-in against N.I.N.A.'s plug-in library
+        run: dotnet build src/StarCadence.Nina -c Release
+      - name: Check it the way N.I.N.A.'s plug-in loader will (exports, metadata, templates)
+        run: dotnet run --project tests/StarCadence.Nina.Tests -c Release
+      - name: Make the plug-in manifest with N.I.N.A.'s own tool
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/isbeorn/nina.plugin.manifests manifests
+          $dll = Resolve-Path src/StarCadence.Nina/bin/Release/net8.0-windows7.0/StarCadence.Nina.dll
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF_NAME } else { 'latest' }
+          & manifests/tools/CreateManifest.ps1 -file $dll -installerUrl "https://github.com/TechAmatuer/StarCadence/releases/download/$tag/StarCadence-nina-plugin.zip"
+          Get-ChildItem *.json | ForEach-Object { Write-Host "manifest: $($_.Name)"; Get-Content $_.FullName | Select-Object -First 30 }
+          Copy-Item (Get-ChildItem *.json | Select-Object -First 1).FullName manifest.json
+      - name: Validate the manifest against N.I.N.A.'s schema
+        shell: bash
+        run: |
+          cd manifests && npm install --silent > /dev/null 2>&1 || npm install
+          node -e "
+            const Ajv=require('ajv'); const addFormats=require('ajv-formats'); const ajv=new Ajv(); addFormats(ajv);
+            const v=ajv.compile(require('./manifest.schema.json')); const m=JSON.parse(require('fs').readFileSync('../manifest.json','utf8').replace(/^﻿/,''));
+            if(!v(m)){ console.error(JSON.stringify(v.errors,null,1)); process.exit(1);} console.log('manifest is valid: '+m.Name+' '+Object.values(m.Version).join('.'));"
+      - name: Package the plug-in (only our two files; N.I.N.A. provides the rest)
+        shell: bash
+        run: |
+          out=src/StarCadence.Nina/bin/Release/net8.0-windows7.0
+          mkdir -p pkg/StarCadence
+          cp "$out/StarCadence.Nina.dll" "$out/StarCadence.Core.dll" pkg/StarCadence/
+          cp src/StarCadence.Nina/README-NINA.md pkg/StarCadence/README.md
+          cp manifest.json pkg/StarCadence/manifest.json
+          cd pkg && 7z a -tzip ../StarCadence-nina-plugin.zip StarCadence > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarCadence-nina-plugin
+          path: StarCadence-nina-plugin.zip
 
   package:
     name: package (${{ matrix.name }})
@@ -132,7 +192,7 @@ jobs:
   release:
     name: attach downloads to the release
     if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
-    needs: package
+    needs: [package, nina]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -141,7 +201,7 @@ jobs:
         with:
           path: out
           merge-multiple: true
-      - name: Upload StarCadence-windows.zip, StarCadence-mac.zip and StarCadence-linux.tar.gz
+      - name: Upload the downloads (Windows, Mac, Linux, N.I.N.A. plug-in)
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || github.ref_name }}

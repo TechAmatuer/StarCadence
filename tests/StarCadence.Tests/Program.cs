@@ -29,7 +29,7 @@ static class Program {
     static int Main(string[] args) {
         var filter = args.FirstOrDefault();
         var tests = typeof(Program).Assembly.GetTypes().SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
-            .Where(m => m.GetCustomAttribute<TestAttribute>() is not null && (filter is null || m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+            .Where(m => m.GetCustomAttribute<TestAttribute>() is not null && (filter is null || m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) || m.DeclaringType!.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(m => m.DeclaringType!.Name).ThenBy(m => m.MetadataToken).ToList();
         int pass = 0, fail = 0;
         var sw = Stopwatch.StartNew();
@@ -533,5 +533,237 @@ static class ExportTests {
             A.Eq(back.Last("ss cyg"), when, "last visit, any letter case");
             A.Eq(back.Last("SS Cyg", when.AddHours(-1)), when.AddHours(-24), "last visit before a time");
         } finally { Directory.Delete(dir, true); }
+    }
+}
+
+/* ---------- the night runner ---------- */
+
+sealed class TestClock : StarCadence.Core.Run.IClock {
+    public DateTime UtcNow { get; set; }
+    public TestClock(DateTime start) { UtcNow = start; }
+    public Task Delay(TimeSpan span, CancellationToken ct) { ct.ThrowIfCancellationRequested(); if (span > TimeSpan.Zero) UtcNow += span; return Task.CompletedTask; }
+    public void Advance(double seconds) => UtcNow = UtcNow.AddSeconds(seconds);
+}
+
+/// <summary>An observatory that only moves the clock: slews take 60 s, exposures their length plus 3 s readout.</summary>
+sealed class FakeObservatory : StarCadence.Core.Run.IObservatory {
+    readonly TestClock _clock;
+    public List<string> Actions { get; } = new();
+    public List<StarCadence.Core.Run.ExposureRequest> Exposures { get; } = new();
+    public HashSet<string> FailOnSlew { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Func<bool> Safe { get; set; } = () => true;
+    public bool Finished { get; private set; }
+    public FakeObservatory(TestClock clock) { _clock = clock; }
+    public Task SlewAsync(double ra, double dec, string name, CancellationToken ct) {
+        Actions.Add($"slew {name}");
+        if (FailOnSlew.Contains(name)) throw new IOException("mount did not answer");
+        _clock.Advance(60); return Task.CompletedTask;
+    }
+    public Task SetFilterAsync(string f, CancellationToken ct) { Actions.Add("filter " + f); _clock.Advance(5); return Task.CompletedTask; }
+    public Task ExposeAsync(StarCadence.Core.Run.ExposureRequest r, CancellationToken ct) {
+        Actions.Add($"expose {r.Target} {r.Filter} {r.Seconds}"); Exposures.Add(r); _clock.Advance(r.Seconds + 3); return Task.CompletedTask;
+    }
+    public Task<bool> IsSafeAsync(CancellationToken ct) => Task.FromResult(Safe());
+    public Task FinishAsync(CancellationToken ct) { Finished = true; return Task.CompletedTask; }
+}
+
+static class RunnerTests {
+    static (StarCadence.Core.Run.NightRunner runner, FakeObservatory obs, TestClock clock, string hist, List<string> log) Make(Config c, IEnumerable<Target> targets, DateTime start, StarCadence.Core.Run.RunnerOptions? opt = null) {
+        var clock = new TestClock(start);
+        var obs = new FakeObservatory(clock);
+        var hist = Path.Combine(Path.GetTempPath(), "sc-run-" + Guid.NewGuid().ToString("N") + ".json");
+        var log = new List<string>();
+        var list = targets.ToList();
+        var runner = new StarCadence.Core.Run.NightRunner(c, obs, clock, _ => list, hist, log.Add, opt);
+        return (runner, obs, clock, hist, log);
+    }
+
+    [Test] static void RunsAWholeNightAndRecordsVisits() {
+        var c = Fx.Cfg();
+        var n = Fx.Night(c);
+        var targets = Enumerable.Range(0, 40).Select(i => Fx.Star($"S{i}", 20 + i * 6, 25 + i % 30, 10 + i % 5)).ToList();
+        var (runner, obs, clock, hist, log) = Make(c, targets, n.StartUtc.AddHours(-1));
+        var done = runner.RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+        A.True(done >= 20, $"many blocks done ({done})");
+        A.True(clock.UtcNow >= n.EndUtc.AddMinutes(-6) && clock.UtcNow <= n.EndUtc.AddMinutes(1), $"ran until dawn ({clock.UtcNow:HH:mm} vs {n.EndUtc:HH:mm})");
+        A.True(log[0].Contains("Waiting for dark"), "waited for dark first");
+        A.True(obs.Finished, "FinishAsync called at the end");
+        var h = History.Load(hist);
+        A.Eq(h.Visits.Count, obs.Actions.Count(a => a.StartsWith("slew")), "one history entry per slewed target");
+        A.True(obs.Actions.Count(a => a.StartsWith("slew S")) == obs.Actions.Where(a => a.StartsWith("slew")).Distinct().Count(), "daily cadence: no target twice");
+        // every exposure is preceded by a slew to that target and a filter change
+        var lastSlew = ""; var lastFilter = "";
+        foreach (var a in obs.Actions) {
+            if (a.StartsWith("slew ")) lastSlew = a[5..];
+            else if (a.StartsWith("filter ")) lastFilter = a[7..];
+            else { var parts = a.Split(' '); A.True(parts[1] == lastSlew && parts[2] == lastFilter, "exposure after slew and filter: " + a); }
+        }
+        A.Eq(runner.Status.Phase, StarCadence.Core.Run.RunnerPhase.Finished, "finished phase");
+        File.Delete(hist);
+    }
+
+    [Test] static void FixedWindowStartsOnTimeAndStopsOnTime() {
+        var c = Fx.Cfg();
+        var n = Fx.Night(c);
+        var midUtc = n.StartUtc.AddHours(3);
+        var midJd = AstroTime.JulianDate(midUtc);
+        var tr = new Target { Name = "Tr-1b", RaDeg = 75, DecDeg = 40, Kind = TargetKind.Transit, Mag = 11, PeriodDays = 3.1, DurationHours = 1.0, Priority = 1,
+            EpochJd = midJd + AstroTime.TtMinusUtcSeconds / 86400 + Sun.HeliocentricCorrectionDays(midJd, 75, 40) };
+        var filler = Enumerable.Range(0, 6).Select(i => Fx.Star($"F{i}", 60 + i * 5, 40)).ToList();
+        var opt = new StarCadence.Core.Run.RunnerOptions { EndMargin = TimeSpan.FromHours(7) };   // stop early: keeps the test short
+        var (runner, obs, clock, hist, log) = Make(c, filler.Append(tr), n.StartUtc, opt);
+        runner.RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+        var tx = obs.Exposures.Where(e => e.Target == "Tr-1b").ToList();
+        A.True(tx.Count > 30, $"transit got many frames ({tx.Count})");
+        var half = TimeSpan.FromMinutes(1.0 * 30 + c.Planner.TransitBaselineMinutes);
+        var slewIdx = obs.Actions.IndexOf("slew Tr-1b");
+        A.True(slewIdx > 0, "slewed to the transit after other work");
+        // The first transit frame starts within a minute of ingress minus baseline; the last ends before egress plus baseline.
+        var firstAt = log.First(l => l.Contains("Tr-1b: R")).Substring(0, 8);
+        var windowStart = (midUtc - half).ToString("HH:mm:ss");
+        A.True(Math.Abs((TimeSpan.Parse(firstAt) - TimeSpan.Parse(windowStart)).TotalSeconds) < 90, $"first transit frame at {firstAt}, window starts {windowStart}");
+        A.True(log.Any(l => l.Contains("Tr-1b: window over") || l.Contains("Tr-1b: done")), "finished the window");
+        var lastTx = log.Last(l => l.Contains("Tr-1b: R")).Substring(0, 8);
+        A.True(TimeSpan.Parse(lastTx) < (midUtc + half).TimeOfDay, $"last transit frame ({lastTx}) before the window ends ({(midUtc + half):HH:mm:ss})");
+        A.True(tx.All(e => e.Filter == "R"), "transit in one filter");
+        File.Delete(hist);
+    }
+
+    [Test] static void FailedTargetIsSkippedAndRetriedLater() {
+        var c = Fx.Cfg();
+        var n = Fx.Night(c);
+        var bad = Fx.Star("Bad", 75, 40); bad.Priority = 1; bad.CadenceDays = 0.2;
+        var good = Fx.Star("Good", 76, 41); good.CadenceDays = 0.2;
+        var opt = new StarCadence.Core.Run.RunnerOptions { EndMargin = TimeSpan.FromHours(6), RetryAfter = TimeSpan.FromHours(2) };
+        var (runner, obs, clock, hist, log) = Make(c, new[] { bad, good }, n.StartUtc, opt);
+        obs.FailOnSlew.Add("Bad");
+        runner.RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+        A.True(obs.Actions.Count(a => a == "slew Bad") is >= 2 and <= 4, $"Bad retried every ~2 h, not every loop ({obs.Actions.Count(a => a == "slew Bad")})");
+        A.True(obs.Exposures.Any(e => e.Target == "Good"), "the good star was still observed");
+        A.True(runner.Status.BlocksFailed >= 1 && runner.Status.BlocksDone >= 1, "counts kept");
+        File.Delete(hist);
+    }
+
+    [Test] static void UnsafeWeatherPausesTheNight() {
+        var c = Fx.Cfg();
+        var n = Fx.Night(c);
+        var targets = Enumerable.Range(0, 10).Select(i => Fx.Star($"S{i}", 60 + i * 4, 40)).ToList();
+        var opt = new StarCadence.Core.Run.RunnerOptions { EndMargin = TimeSpan.FromHours(8) };
+        var (runner, obs, clock, hist, log) = Make(c, targets, n.StartUtc, opt);
+        var unsafeFrom = n.StartUtc.AddMinutes(20); var unsafeTo = n.StartUtc.AddMinutes(80);
+        obs.Safe = () => clock.UtcNow < unsafeFrom || clock.UtcNow > unsafeTo;
+        runner.RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+        A.True(log.Any(l => l.Contains("Unsafe")), "reported the unsafe spell");
+        var during = obs.Exposures.Count(e => false);
+        var times = log.Where(l => l.Contains(": slewing")).Select(l => TimeSpan.Parse(l[..8])).ToList();
+        A.True(!times.Any(t => t > unsafeFrom.AddMinutes(1).TimeOfDay && t < unsafeTo.TimeOfDay), "no new target started while unsafe");
+        A.True(obs.Exposures.Count > 0, "work resumed afterwards");
+        File.Delete(hist);
+    }
+
+    [Test] static void CancellationStopsCleanly() {
+        var c = Fx.Cfg();
+        var n = Fx.Night(c);
+        var targets = Enumerable.Range(0, 10).Select(i => Fx.Star($"S{i}", 60 + i * 4, 40)).ToList();
+        var (runner, obs, clock, hist, log) = Make(c, targets, n.StartUtc);
+        var cts = new CancellationTokenSource();
+        runner.BlockFinished += (_, _) => { if (runner.Status.BlocksDone >= 3) cts.Cancel(); };
+        var threw = false;
+        try { runner.RunAsync(cts.Token).GetAwaiter().GetResult(); } catch (OperationCanceledException) { threw = true; }
+        A.True(!threw, "cancellation is not an error");
+        A.Eq(runner.Status.Phase, StarCadence.Core.Run.RunnerPhase.Stopped, "stopped phase");
+        A.True(obs.Finished, "observatory finished (parked) on stop");
+        A.Eq(runner.Status.BlocksDone, 3, "stopped after three blocks");
+        File.Delete(hist);
+    }
+
+    [Test] static void ScaledClockRunsFast() {
+        var start = new DateTime(2026, 12, 3, 22, 0, 0, DateTimeKind.Utc);
+        var clk = new StarCadence.Core.Run.ScaledClock(start, 600);
+        var t0 = clk.UtcNow;
+        clk.Delay(TimeSpan.FromMinutes(5), CancellationToken.None).GetAwaiter().GetResult();   // 0.5 s real
+        var dt = (clk.UtcNow - t0).TotalMinutes;
+        A.True(dt >= 5 && dt < 6.5, $"5 simulated minutes passed in half a second ({dt:0.0})");
+    }
+}
+
+/* ---------- INDI, against a real INDI server when one is available ---------- */
+
+static class IndiTests {
+    [Test] static void FitsHeaderPatching() {
+        // A minimal FITS: one header block, 4 pixels of 16-bit data.
+        var cards = new[] { "SIMPLE  =                    T", "BITPIX  =                   16", "NAXIS   =                    2", "NAXIS1  =                    2", "NAXIS2  =                    2", "FILTER  = 'Luminance'", "END" };
+        var header = string.Concat(cards.Select(c => c.PadRight(80))).PadRight(2880);
+        var data = System.Text.Encoding.ASCII.GetBytes(header).Concat(new byte[2880]).ToArray();
+        data[2880] = 1; data[2881] = 2;
+        var patched = StarCadence.Core.Indi.Fits.WithCards(data, new (string, object?, string?)[] { ("OBJECT", "SS Cyg", "target"), ("FILTER", "V", null), ("RA", 325.678, "deg") });
+        var h = StarCadence.Core.Indi.Fits.ReadHeader(patched);
+        A.Eq(h["OBJECT"], "SS Cyg", "card added"); A.Eq(h["FILTER"], "V", "card replaced"); A.Eq(h["RA"], "325.678", "number card");
+        A.True(patched.Length == data.Length && patched[2880] == 1 && patched[2881] == 2, "data untouched, header still one block");
+        // Enough cards to need a second header block: the data must move, not be overwritten.
+        var many = Enumerable.Range(0, 40).Select(i => ($"KEY{i:00}", (object?)i, (string?)null)).ToArray();
+        var grown = StarCadence.Core.Indi.Fits.WithCards(data, many);
+        A.True(grown.Length == data.Length + 2880 && grown[5760] == 1 && grown[5761] == 2, "header grew by one block and the data followed");
+        A.Eq(StarCadence.Core.Indi.IndiClient.Sexagesimal("12:30:00"), 12.5, "sexagesimal");
+        A.Eq(StarCadence.Core.Indi.IndiClient.Sexagesimal("-05 30 00"), -5.5, "negative sexagesimal");
+    }
+
+    /// <summary>Runs only when an INDI server with the simulator drivers is reachable (STARCADENCE_INDI=host:port, default localhost:7624).</summary>
+    [Test] static void RealIndiServer_SlewFilterExposeAndSave() {
+        var spec = Environment.GetEnvironmentVariable("STARCADENCE_INDI") ?? "localhost:7624";
+        var host = spec.Split(':')[0]; var port = spec.Contains(':') ? int.Parse(spec.Split(':')[1]) : 7624;
+        try { using var probe = new System.Net.Sockets.TcpClient(); probe.Connect(host, port); }
+        catch (Exception) { Console.WriteLine($"      (no INDI server at {spec}; skipped)"); return; }
+
+        var c = Fx.Cfg();
+        c.Indi.Host = host; c.Indi.Port = port; c.Indi.SettleSeconds = 0.2; c.Indi.ParkAtEnd = true;
+        var dir = Path.Combine(Path.GetTempPath(), "sc-indi-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var log = new List<string>();
+        var obs = new StarCadence.Core.Indi.IndiObservatory(c.Indi, c.Filters, Path.Combine(dir, "images"), log.Add);
+        try {
+            var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            obs.ConnectAsync(cts.Token).GetAwaiter().GetResult();
+            A.True(obs.Mount.Length > 0 && obs.Camera.Length > 0, $"devices found: mount '{obs.Mount}', camera '{obs.Camera}', wheel '{obs.FilterWheel}'");
+            // Name the simulator's filters the way the configuration does, as an observer would in Ekos.
+            if (obs.FilterWheel.Length > 0) obs.NameFiltersAsync(new[] { "B", "V", "R", "I" }, cts.Token).GetAwaiter().GetResult();
+            A.True(obs.FilterSlots.ContainsKey("V"), "wheel knows V");
+            // A target that is up for the simulator's default site at the current time: use the local sidereal meridian.
+            var lstDeg = AstroTime.LmstDegrees(AstroTime.JulianDate(DateTime.UtcNow), -75);
+            var ra = lstDeg; var dec = 40.0;
+            obs.SlewAsync(ra, dec, "Sim Target", cts.Token).GetAwaiter().GetResult();
+            obs.SetFilterAsync("V", cts.Token).GetAwaiter().GetResult();
+            obs.ExposeAsync(new StarCadence.Core.Run.ExposureRequest("Sim Target", "V", "V", 1.0, 1, 2, ra, dec, TargetKind.Variable, null, DateTime.UtcNow.AddMinutes(5)), cts.Token).GetAwaiter().GetResult();
+            obs.SetFilterAsync("B", cts.Token).GetAwaiter().GetResult();
+            obs.ExposeAsync(new StarCadence.Core.Run.ExposureRequest("Sim Target", "B", "B", 0.5, 2, 2, ra, dec, TargetKind.Variable, null, DateTime.UtcNow.AddMinutes(5)), cts.Token).GetAwaiter().GetResult();
+            A.Eq(obs.FramesSaved, 2, "two frames saved");
+            var bytes = File.ReadAllBytes(obs.SavedFiles[0]);
+            var h = StarCadence.Core.Indi.Fits.ReadHeader(bytes);
+            A.True(StarCadence.Core.Indi.Fits.LooksLikeFits(bytes) && bytes.Length > 2880 * 2, $"a real FITS file ({bytes.Length} bytes)");
+            A.Eq(h["OBJECT"], "Sim Target", "OBJECT card"); A.Eq(h["FILTER"], "V", "FILTER card");
+            A.True(h.ContainsKey("EXPTIME") && Math.Abs(double.Parse(h["EXPTIME"], CultureInfo.InvariantCulture) - 1.0) < 0.01, $"EXPTIME from the driver ({h.GetValueOrDefault("EXPTIME")})");
+            A.True(h.ContainsKey("DATE-OBS"), "DATE-OBS from the driver");
+            A.True(Path.GetFileName(obs.SavedFiles[1]).StartsWith("Sim_Target_B_"), "file named after target and filter");
+            obs.FinishAsync(cts.Token).GetAwaiter().GetResult();
+            A.True(log.Any(l => l.Contains("parking")), "parked at the end");
+
+            // Now a short planned run through the night runner, at 600x speed, with sub-second exposures.
+            foreach (var f in c.Filters) { f.RefExposure = 0.5; f.MinExposure = 0.3; f.MaxExposure = 1; }
+            c.Overheads.SlewAndCenterS = 5; c.Overheads.FilterChangeS = 1; c.Overheads.ReadoutS = 1;
+            var night = Fx.Night(c);
+            // 120x: a real second is two simulated minutes, so slews and exposures still take their real time.
+            var clock = new StarCadence.Core.Run.ScaledClock(night.StartUtc.AddMinutes(30), 120);
+            var hist = Path.Combine(dir, "history.json");
+            var targets = Enumerable.Range(0, 3).Select(i => Fx.Star($"Run {i}", 70 + i * 3, 40, 12)).ToList();
+            var opt = new StarCadence.Core.Run.RunnerOptions { EndMargin = (night.EndUtc - night.StartUtc) - TimeSpan.FromHours(3) };   // 2.5 simulated hours
+            var runner = new StarCadence.Core.Run.NightRunner(c, obs, clock, _ => targets, hist, log.Add, opt);
+            var done = runner.RunAsync(new CancellationTokenSource(TimeSpan.FromMinutes(4)).Token).GetAwaiter().GetResult();
+            A.True(done >= 2, $"the runner observed targets through INDI ({done} blocks, {obs.FramesSaved} frames)");
+            A.True(History.Load(hist).Visits.Count >= 2, "visits recorded");
+            Console.WriteLine($"      INDI run: {done} targets, {obs.FramesSaved} frames; " + string.Join(" | ", log.Where(l => l.Contains("slewing") || l.Contains("done (")).Take(6)));
+        } finally {
+            obs.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            Directory.Delete(dir, true);
+        }
     }
 }

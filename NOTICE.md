@@ -8,6 +8,8 @@ StarCadence is licensed under the Mozilla Public License 2.0. It builds on these
 | [ExoPlanets](https://github.com/NickHardy/ExoPlanets) N.I.N.A. plug-in, Nick Hardy and contributors (commit 9d7bc2a) | MPL-2.0 | The event window for periodic stars (epoch + period x (n + phase), +/- half-width + O-C range, from `VariableStar.NextEvent`); the column names its CSV parser accepts (`UnifiedVariableStarCsvParser`); the ExoClock field names (`ExoClockTarget`); its three sample CSV files, used as test fixtures. |
 | Space Lab (this author's variable-star pipeline) | own work | AAVSO Target Tool field mapping, exposure scaling from a magnitude-12 reference, "familiar" exposure rounding, nearest-filter substitutions. |
 | [KStars/Ekos](https://invent.kde.org/education/kstars) | GPL-2.0+ | File formats only (`.esl` scheduler lists, `.esq` capture sequences), read from its source. No code copied. |
+| [INDI](https://indilib.org) | LGPL-2.1 | The INDI protocol (XML over TCP) and its standard property names (EQUATORIAL_EOD_COORD, FILTER_SLOT, CCD_EXPOSURE, ...). StarCadence's client is its own code; the test suite runs against INDI's simulator drivers. |
+| [N.I.N.A.](https://github.com/isbeorn/nina) | MPL-2.0 | The plug-in builds on the NINA.Plugin library and uses N.I.N.A.'s own Center, Slew, Switch Filter and Take Exposure instructions; the container design follows Target Scheduler's. |
 | Jean Meeus, *Astronomical Algorithms* (2nd ed.) | - | Sidereal time, precession, Sun (ch. 25), Moon (ch. 47 main terms), Moon illumination (ch. 48). |
 
 Data services: [AAVSO Target Tool](https://targettool.aavso.org) (your own API key), [ExoClock](https://www.exoclock.space).

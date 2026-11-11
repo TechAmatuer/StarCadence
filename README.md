@@ -15,11 +15,13 @@ For each night it works out:
   the Moon;
 - **how**: which filters, how many seconds per exposure for that star's brightness, and how many frames.
 
-It writes the plan as text, CSV and JSON, plus files your observatory software can load (KStars/Ekos), or import
-(N.I.N.A. Target Scheduler).
+It can then **run the night itself**: inside N.I.N.A. through the StarCadence plug-in (Windows), or directly over
+INDI, the protocol KStars/Ekos observatories use (Mac, Linux, Windows). Either way it slews, sets the filter, takes
+the exposures, records the visit, plans again, and goes on until dawn. It also writes the plan as text, CSV and JSON,
+and as files for KStars/Ekos or N.I.N.A. Target Scheduler if you prefer to let those run it.
 
-It does **not** move the telescope, take or process images, or submit anything to the AAVSO. It plans the night;
-your observatory software runs it; you send the results.
+It does **not** process images or submit anything to the AAVSO. You measure the frames with your usual photometry
+software and send the results.
 
 ![StarCadence planning a night](docs/screenshot-tonight.png)
 
@@ -143,6 +145,21 @@ Not planned (3):
 Running the planner again during the night (`--from now`) plans the rest of the night: after clouds, a fault, or a
 new alert.
 
+## Running the night
+
+Three ways, from least to most automatic:
+
+| Your setup | What to do | Plate solving, focus, guiding |
+|---|---|---|
+| **N.I.N.A.** (Windows) | Install the **StarCadence plug-in** (`StarCadence-nina-plugin.zip` from the release page; see its README) and add the **StarCadence Night** instruction to your sequence. It plans, slews, centres, exposes and re-plans inside N.I.N.A. | N.I.N.A.'s own: plate-solve centring on each target; put the instruction after your autofocus step and inside your safety loop. |
+| **KStars/Ekos or any INDI server** (Mac, Linux, Windows, Raspberry Pi) | On the Tonight tab, **Run the night → Through an INDI server**, enter `host:port` (Ekos's INDI server is usually `localhost:7624`), press Start. Or `starcadence run --indi host:port`. | None yet: it slews, changes filters and exposes; focus first, and use a mount that points well. For plate-solve centring, export the Ekos files instead and let Ekos run them. |
+| **Rehearsal** (no hardware) | **Run the night → Simulation**, pick a speed, press Start. Or `starcadence run --simulate --from 2026-12-04T02:00:00Z --speed 600`. | Shows exactly what a night would do, in minutes. |
+
+During a run the window shows the phase, the current and next target, the exposure count and a live log; **Stop**
+finishes the current exposure and parks the mount. Each visit is written to `history.json` as it starts, so a
+re-plan (or tomorrow's plan) knows what has been done. Frames from an INDI run are saved under
+`images/<night>/` as FITS with `OBJECT`, `FILTER`, `RA` and `DEC` cards added.
+
 ## The app window
 
 | Tonight | Targets | Setup |
@@ -166,7 +183,7 @@ new alert.
 | `plan.csv` | a spreadsheet: one row per filter step |
 | `plan.json` | other programs (the full plan) |
 | `ekos/plan.esl` + `.esq` files | **KStars/Ekos** (macOS, Linux, Windows). Transits and minima start and stop at their times; other jobs run in plan order. |
-| `nina-target-scheduler.csv` | **N.I.N.A. Target Scheduler** bulk import (Windows), one row per target, typed by exposure length so each type maps to an exposure template. Target Scheduler has no time windows, so transits and minima are left out and listed on screen. |
+| `nina-target-scheduler.csv` | **N.I.N.A. Target Scheduler** bulk import (Windows), one row per target, typed by exposure length so each type maps to an exposure template. Target Scheduler has no time windows, so transits and minima are left out and listed on screen. The StarCadence plug-in (above) has no such limit. |
 
 ## Running from source (command line)
 
@@ -211,6 +228,8 @@ starcadence init      [--dir FOLDER]                   write an example config.j
 starcadence fetch     [--config FILE]                  download AAVSO Target Tool and ExoClock data
 starcadence plan      [--config FILE] [--date YYYY-MM-DD] [--from now|TIME]
                       [--out FOLDER] [--formats txt,json,csv,ekos,nina] [--fetch]
+starcadence run       [--config FILE] --indi [HOST[:PORT]] [--no-park]       run tonight through an INDI server
+starcadence run       [--config FILE] --simulate [--from TIME --speed N]   rehearse tonight with no hardware
 starcadence record    [--config FILE] --target NAME [--utc TIME]
                       or --plan plan.json [--until TIME]   mark visits done (drives the cadence)
 starcadence exposures [--config FILE] --mag M [--bright M]  exposure per filter for one star
@@ -235,25 +254,44 @@ Without a key, export a CSV from the Target Tool website and set `sources.target
   altitudes within 0.013°, Moon separation within 0.006°, Moon illumination within 0.002.
 - **Dark-time limits** fall where the Sun really is at the limit altitude (within 0.005°).
 - **Transit and minimum times** convert BJD/HJD to UTC within 6 seconds.
-- **35 automated tests** check the planner's rules: no overlaps, every block observable, windows kept, cadence spacing,
-  sources, exporters, and number formats under other locales. GitHub Actions runs them on Windows, macOS (Apple
-  Silicon) and Linux on every change (badge at the top), starts the app window on all three, and drives it in a
-  real browser on Linux (plan, downloads, saving settings, refusing bad input).
+- **43 automated tests** check the planner's rules (no overlaps, every block observable, windows kept, cadence
+  spacing), the sources and exporters, number formats under other locales, and the **night runner**: a whole night
+  against a fake observatory, transits started and stopped on time, failed targets retried later, unsafe weather
+  pausing the night, clean stops. GitHub Actions runs them on Windows, macOS (Apple Silicon) and Linux on every
+  change (badge at the top), starts the app window on all three, drives it in a real browser on Linux, and runs a
+  night through a **real INDI server** with simulated mount, filter wheel and camera, checking the saved FITS files.
+- **The N.I.N.A. plug-in** is built on GitHub's Windows machines against N.I.N.A.'s plug-in library 3.2, checked the
+  way N.I.N.A.'s plug-in loader sees it (exports, metadata, templates), and its manifest is made with N.I.N.A.'s own
+  tool and validated against N.I.N.A.'s schema.
 - **The app window** only listens on this computer (127.0.0.1); every change needs a key that only its own page
   has, so other web pages can't use it.
 - **File formats**: Ekos files follow the KStars source; the Target Scheduler CSV is read back the way its importer
   reads it.
 
-**Not yet tested:** loading the output into a live Ekos or N.I.N.A. session; live Target Tool and ExoClock downloads;
-the Windows and Mac downloads on real (non-CI) machines. Please open an issue if something doesn't work.
+**Not yet tested:** the plug-in inside a live N.I.N.A. session (it is compiled and checked, not yet run with real
+or simulated N.I.N.A. equipment); an INDI run against real hardware (only the simulator drivers so far); loading the
+Ekos files into a live Ekos; live Target Tool and ExoClock downloads; the Windows and Mac downloads on real (non-CI)
+machines. Please open an issue if something doesn't work.
 
 ## Known limits
 
 - Meridian flips are not modelled; your observatory software handles them during a visit.
 - Exposures come from the magnitude you give (or the middle of the catalogue range). Give current magnitudes for
   large-amplitude stars (Miras, novae) or the exposure can be far off.
-- The N.I.N.A. Target Scheduler file can't carry time windows or cadence. A N.I.N.A. plug-in that runs StarCadence
-  plans directly is the next step.
+- The INDI runner does not plate-solve, focus or guide. It is right for short photometric exposures on a mount that
+  points well, after focusing; otherwise let Ekos run the exported files.
+- The N.I.N.A. plug-in runs its own slew, filter and exposure steps, so triggers you place inside the StarCadence
+  Night container do not fire; keep autofocus, meridian-flip and safety handling in the surrounding sequence as usual.
+
+## Project layout
+
+| Folder | What |
+|---|---|
+| `src/StarCadence.Core` | the planner, sources, exporters, night runner and INDI client (Windows, macOS, Linux) |
+| `src/StarCadence.Cli` | the program: app window and command line |
+| `src/StarCadence.Nina` | the N.I.N.A. plug-in (Windows only) |
+| `tests/` | the test suite, the browser test, the plug-in checks |
+| `examples/` | a sample configuration, target list and finished plan |
 
 ## Licence and credits
 

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The N.I.N.A. plug-in. Windows only (N.I.N.A. is a Windows WPF application); built and checked by the Windows CI job. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>StarCadence.Nina</RootNamespace>
+    <AssemblyName>StarCadence.Nina</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Platforms>AnyCPU;x64</Platforms>
+    <RollForward>Major</RollForward>
+    <NoWarn>$(NoWarn);CS1591;CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="NINA.Plugin" Version="3.2.0.9001" />
+    <ProjectReference Include="..\StarCadence.Core\StarCadence.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- N.I.N.A. looks for a plug-in's data templates and icons in exported resource dictionaries. -->
+    <Page Update="Templates.xaml"><Generator>MSBuild:Compile</Generator></Page>
+  </ItemGroup>
+</Project>

@@ -14,6 +14,8 @@ public sealed class Config {
     public SourceSettings Sources { get; set; } = new();
     public List<WatchItem> WatchList { get; set; } = new();
     public ExportSettings Export { get; set; } = new();
+    /// <summary>Running the night directly through an INDI server (Mac/Linux/Ekos setups).</summary>
+    public Indi.IndiSettings Indi { get; set; } = new();
     /// <summary>Where this observatory's own observation history is kept (relative to the config file).</summary>
     public string HistoryFile { get; set; } = "history.json";
 

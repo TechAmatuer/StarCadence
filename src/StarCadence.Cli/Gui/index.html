@@ -102,6 +102,7 @@ const KINDS = ["variable", "series", "transit", "event", "standard"];
 const BANDS = ["U", "B", "V", "R", "I", "SU", "SG", "SR", "SI", "SZ", "CV", "CR", "TB", "TG", "TR", "J", "H", "K"];
 const SECTIONS = { ac: "Alerts / Campaigns", cv: "Cataclysmic variables", eb: "Eclipsing binaries", spp: "Short-period pulsators", lpv: "Long-period variables", yso: "Young stellar objects", het: "High-energy targets", ep: "Exoplanets", misc: "Miscellaneous" };
 const WHY_SHORT = { Priority: "high priority", Cadence: "overdue", LowCoverage: "few recent observations", Alert: "AAVSO alert/campaign", SettingSoonest: "about to set", Deadline: "campaign ends soon", Slew: "short slew", Altitude: "high in the sky", Efficiency: "short visit" };
+const PHASES = { Idle: "Idle", WaitingForDark: "Waiting for dark", Planning: "Planning", Slewing: "Slewing", Exposing: "Exposing", WaitingForWindow: "Waiting for the next target", WaitingSafe: "Waiting for safe weather", Finished: "Finished", Stopped: "Stopped", Failed: "Failed" };
 const RULE_HELP = { Priority: "targets marked high priority", Cadence: "stars overdue for their cadence", LowCoverage: "stars with few recent observations", Alert: "AAVSO alert and campaign targets", SettingSoonest: "targets about to set", Deadline: "campaigns about to end", Slew: "short slews from the last target", Altitude: "higher in the sky", Efficiency: "short visits, so more stars fit" };
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -183,6 +184,7 @@ function renderTonight() {
       <button class="b" id="replan" ${S.busy ? "disabled" : ""} title="Plan the rest of tonight from now (after clouds, a fault or a new alert)">Re-plan from now</button>
       <span class="muted small">${total} target${total === 1 ? "" : "s"} loaded from ${(st.sources || []).filter(s => s.count > 0).length} source(s). <a href="#" onclick="tab('targets');return false" style="color:var(--accent)">Change targets</a></span>
     </div></div>`;
+  h += runCard();
   if (!p) {
     h += `<div class="card empty"><p style="font-size:17px;color:var(--text)">Press <b>Plan this night</b>.</p>
       <p>StarCadence picks which stars to observe, when, with which filters and exposures, and makes files for N.I.N.A. and Ekos.</p>
@@ -228,6 +230,56 @@ function renderTonight() {
     <span class="muted small">After the night, this records every visit whose time has passed, so StarCadence knows when each star is due again.</span></div></div>`;
   $("#tab-tonight").innerHTML = h; bindTonight();
 }
+/* ---------- running the night ---------- */
+function runCard() {
+  const r = S.run || { running: false, phase: "Idle", log: [] };
+  const indi = (S.cfg && S.cfg.indi) || { host: "localhost", port: 7624 };
+  const mode = S.runMode || "indi";
+  let h = `<div class="card"><h3>Run the night</h3>`;
+  if (!r.running) {
+    h += `<div class="row">
+      <label class="f">How<select id="runmode"><option value="indi" ${mode === "indi" ? "selected" : ""}>Through an INDI server (KStars/Ekos setups)</option><option value="simulate" ${mode === "simulate" ? "selected" : ""}>Simulation: no hardware, just the log</option></select></label>
+      <label class="f" id="hostf" ${mode === "indi" ? "" : "hidden"}>INDI server<input id="runhost" value="${esc(indi.host || "localhost")}:${esc(indi.port || 7624)}" style="min-width:180px"></label>
+      <label class="f" id="speedf" ${mode === "simulate" ? "" : "hidden"}>Speed<select id="runspeed"><option value="1">real time</option><option value="60">60x</option><option value="600" selected>600x</option><option value="3600">3600x</option></select></label>
+      <button class="b primary" id="runstart">Start tonight</button>
+    </div>
+    <p class="muted small" style="margin:10px 0 0">StarCadence slews, changes filters and exposes, re-planning after every target and recording each visit. N.I.N.A. users: use the StarCadence Night instruction inside N.I.N.A. instead (see the README).</p>`;
+    if (r.phase && r.phase !== "Idle" && r.log && r.log.length) h += `<details style="margin-top:8px"><summary>Last run's log</summary><pre class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--bg);padding:8px;border-radius:8px">${esc(r.log.join("\n"))}</pre></details>`;
+    if (r.error) h += `<p class="small" style="color:var(--danger)">${esc(r.error)}</p>`;
+  } else {
+    const cur = r.current, nx = r.next;
+    h += `<div class="stat">
+      <div><b>${esc(PHASES[r.phase] || r.phase)}</b><span>${esc(r.mode === "indi" ? ("INDI " + (r.host || "") + ":" + (r.port || "")) : ("simulation" + (r.speed && r.speed !== 1 ? " " + r.speed + "x" : "")))}</span></div>
+      <div><b>${r.blocksDone}</b><span>targets done${r.blocksFailed ? ` (${r.blocksFailed} failed)` : ""}</span></div>
+      <div><b>${r.exposures}</b><span>exposures</span></div>
+      ${r.clockUtc ? `<div><b>${esc(String(r.clockUtc).slice(11, 16))}</b><span>clock (UTC)</span></div>` : ""}
+    </div>
+    <p style="margin:4px 0"><b>${esc(r.message)}</b></p>
+    ${nx ? `<p class="muted small" style="margin:4px 0">Next: ${esc(nx.target)} (${esc(nx.kind)}${nx.window ? ", " + esc(nx.window) : ""})</p>` : ""}
+    <pre class="small" style="white-space:pre-wrap;max-height:220px;overflow:auto;background:var(--bg);padding:8px;border-radius:8px;margin:8px 0">${esc((r.log || []).slice(-25).join("\n"))}</pre>
+    <div class="row"><button class="b danger" id="runstop">Stop</button><span class="muted small">Stops after the current exposure${r.mode === "indi" ? " and parks the mount" : ""}.</span></div>`;
+  }
+  return h + `</div>`;
+}
+async function pollRun() {
+  try { S.run = await api("/api/run/status"); } catch (e) { return; }
+  if (!$("#tab-tonight").hidden) { const open = document.activeElement && document.activeElement.id === "runhost"; if (!open) renderTonight(); }
+}
+function bindRun() {
+  const m = $("#runmode"); if (m) m.onchange = () => { S.runMode = m.value; renderTonight(); };
+  const st = $("#runstart");
+  if (st) st.onclick = async () => {
+    const mode = $("#runmode").value;
+    const body = { mode, park: true };
+    if (mode === "indi") { const hp = ($("#runhost").value || "").trim().split(":"); body.host = hp[0] || "localhost"; body.port = parseInt(hp[1] || "7624", 10); }
+    else { body.speed = parseFloat($("#runspeed").value); if (body.speed !== 1) body.fromUtc = new Date().toISOString(); }
+    st.disabled = true; st.textContent = "Starting...";
+    try { S.run = await api("/api/run/start", body); toast(mode === "indi" ? "Connected; the night is running" : "Simulation started"); }
+    catch (e) { toast(e.message, true); }
+    renderTonight();
+  };
+  const sp = $("#runstop"); if (sp) sp.onclick = async () => { sp.disabled = true; try { S.run = await api("/api/run/stop", {}); } catch (e) { toast(e.message, true); } renderTonight(); };
+}
 function blocksMinutes(blocks) { return blocks.reduce((a, b) => a + (new Date(b.endUtc) - new Date(b.startUtc)) / 60000, 0); }
 function downloads(p) {
   const f = name => p.files.find(x => x.split("/").pop().startsWith(name));
@@ -263,6 +315,7 @@ function timeline(p) {
   return s + "</svg>";
 }
 function bindTonight() {
+  bindRun();
   const pb = $("#planbtn"); if (pb) pb.onclick = () => plan(false);
   const rp = $("#replan"); if (rp) rp.onclick = () => plan(true);
   const d = $("#date"); if (d) d.onchange = () => S.planDate = d.value;
@@ -397,6 +450,17 @@ function renderSetup() {
     <p class="muted small">Each rule gives 0–1 and is multiplied by its weight; the highest total is observed next. 0 turns a rule off.</p>
     <div class="grid">${(st.rules || []).map(r => `<label class="f">${esc(r.name)} <span class="hint">prefers ${esc(RULE_HELP[r.name] || "")}</span><input type="number" step="0.1" min="0" data-t="num" data-p="planner.ruleWeights.${esc(r.name)}" value="${esc(c.planner.ruleWeights[r.name] ?? r.weight)}"></label>`).join("")}</div>
   </details>
+  <details><summary>INDI (running the night directly on Mac/Linux/Ekos setups)</summary><div class="grid">
+    ${field("indi.host", "INDI server host")}
+    ${field("indi.port", "Port")}
+    ${field("indi.telescope", "Mount device (blank = first found)", { kind: "opttext" })}
+    ${field("indi.camera", "Camera device (blank = first found)", { kind: "opttext" })}
+    ${field("indi.filterWheel", "Filter wheel device (blank = first found)", { kind: "opttext" })}
+    ${field("indi.imageDir", "Image folder (inside the data folder, or absolute)")}
+    ${field("indi.settleSeconds", "Settle after slew (s)")}
+    ${field("indi.cameraTemperature", "Cool camera to (°C, blank = leave)", { kind: "optnum", type: "number" })}
+    ${field("indi.parkAtEnd", "Park the mount at the end", { type: "checkbox" })}
+  </div><p class="muted small">Filter names in the wheel must match the names in your filter table above. No plate solving, focusing or guiding: for those, use the Ekos files.</p></details>
   <details><summary>KStars/Ekos export (advanced)</summary><div class="grid">
     ${field("export.ekosSequenceDir", "Folder for the sequence files on the Ekos computer", { kind: "opttext", placeholder: "e.g. /home/astro/StarCadence/ekos" })}
     ${field("export.ekosImageDir", "Image folder on the Ekos computer", { kind: "opttext" })}
@@ -422,7 +486,7 @@ $("#red").onclick = () => { document.body.classList.toggle("redmode"); try { loc
 try { if (localStorage.getItem("sc-red")) document.body.classList.add("redmode"); } catch (e) { }
 $("#quit").onclick = async () => {
   if (S.dirty && !confirm("You have unsaved changes. Quit anyway?")) return;
-  try { await api("/api/quit", {}); } catch (e) { }
+  try { await api("/api/quit", {}); } catch (e) { toast(e.message, true); return; }
   document.body.innerHTML = `<div class="empty" style="padding-top:20vh"><img src="/icon.svg" width="64" alt=""><h2>StarCadence has stopped.</h2><p>You can close this tab. Open StarCadence again to continue.</p></div>`;
 };
 window.addEventListener("beforeunload", e => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
@@ -435,7 +499,7 @@ window.addEventListener("beforeunload", e => { if (S.dirty) { e.preventDefault()
   } catch (e) {
     document.querySelector("main").innerHTML = `<div class="banner err">StarCadence is not answering: ${esc(e.message)}. Start it again.</div>`;
   }
-  if (!window.SC_DEMO) setInterval(() => api("/api/heartbeat", {}).catch(() => { }), 20000);
+  if (!window.SC_DEMO) { setInterval(() => api("/api/heartbeat", {}).catch(() => { }), 20000); pollRun(); setInterval(pollRun, 3000); }
 })();
 </script>
 </body>
