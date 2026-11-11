@@ -11,3 +11,4 @@ history.json
 ci-out/
 ci-app/
 ci-ui/
+.DS_Store
