@@ -54,8 +54,8 @@
   // Stars you always want. Windows: "start/end" ISO times; prefix "fixed:" when the whole window must be covered.
   // For eclipsing binaries give epoch (HJD) and period (days); the planner finds each minimum in the night.
   "watchList": [
-    { "name": "SS Cyg", "ra": "21 42 42.8", "dec": "+43 35 09.9", "mag": 11.5, "magBright": 8.0, "cadenceDays": 1, "priority": 0.8, "filters": [ "V", "B" ] },
-    { "name": "Example EB (check VSX first)", "ra": "03 08 10.1", "dec": "+40 57 20.3", "mag": 12.0, "epoch": 2460000.0, "period": 2.8673, "eventMinutes": 90, "filters": [ "V" ] }
+    { "name": "SS Cyg", "ra": "21 42 42.8", "dec": "+43 35 09.9", "mag": 11.5, "magBright": 8.0, "cadenceDays": 1, "priority": 0.8, "filters": [ "V", "B" ] }
+    // an eclipsing binary: { "name": "...", "ra": "...", "dec": "...", "mag": 11, "epoch": 2460000.123, "period": 1.2345, "eventMinutes": 90 }
   ],
 
   "export": {

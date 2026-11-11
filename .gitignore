@@ -7,3 +7,7 @@ dist/
 plans/
 cache/
 history.json
+*.key
+ci-out/
+ci-app/
+ci-ui/

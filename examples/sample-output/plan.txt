@@ -1,6 +1,6 @@
 Night of 2026-12-03 at My observatory  (times America/New_York)
 Dark from 17:38 to 06:01; Moon 21% lit
-14 blocks, 14 targets from 18 candidates; 41% of the dark time used
+14 blocks, 14 targets from 17 candidates; 41% of the dark time used
 
 17:38-17:41  V Sge                  Variable  alt 57->57  B 1x40s  V 1x10s  R 1x5s  I 1x5s
       score 3.30 (Cadence 1.00, Alert 0.70, Priority 1.00)
@@ -63,8 +63,7 @@ Dark from 17:38 to 06:01; Moon 21% lit
       - saturates if brighter than V 7.7, I 7.7 (catalogue maximum 4.4): re-plan after an outburst alert
       - sample row
 
-Not planned (4):
-  Example EB (check VSX first): no event or transit window tonight
+Not planned (3):
   T CrB: not observable tonight (too low)
   R CrB: not observable tonight (too low)
   Sample-2b: transit mid 10:40 UTC: window runs outside dark time

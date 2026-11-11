@@ -2,6 +2,8 @@ name: build and test
 
 on:
   push:
+    branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -25,42 +27,121 @@ jobs:
         run: dotnet build -c Release
       - name: Tests
         run: dotnet run --project tests/StarCadence.Tests -c Release --no-build
-      - name: Plan the example night
+      - name: Plan the example night (command line)
         shell: bash
         run: |
           dotnet run --project src/StarCadence.Cli -c Release --no-build -- plan --config examples/config.json --date 2026-12-03 --out ci-out --formats txt,json,csv,ekos,nina
           test -s ci-out/plan.txt && test -s ci-out/ekos/plan.esl && test -s ci-out/nina-target-scheduler.csv
-          dotnet run --project src/StarCadence.Cli -c Release --no-build -- version
+      - name: Start the app window (no browser) and use it
+        shell: bash
+        run: |
+          mkdir -p ci-app && cp examples/config.json examples/sample-targets.csv examples/sample-exoclock.json ci-app/
+          dotnet run --project src/StarCadence.Cli -c Release --no-build -- app --data ci-app --port 8799 --no-browser > app.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8799/api/ping && break; sleep 2; done
+          TOKEN=$(curl -s http://127.0.0.1:8799/ | grep -o '[0-9A-F]\{32\}' | head -1)
+          curl -sf http://127.0.0.1:8799/api/state > state.json
+          curl -sf -H "X-StarCadence: $TOKEN" -H 'Content-Type: application/json' -X POST http://127.0.0.1:8799/api/plan -d '{"date":"2026-12-03"}' > plan.json
+          grep -q '"blocks"' plan.json
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8799/api/plan -d '{}')" = "403"
+          curl -sf -o nina.csv "http://127.0.0.1:8799/api/file?path=plans/2026-12-03/nina-target-scheduler.csv" && head -1 nina.csv
+          curl -sf -H "X-StarCadence: $TOKEN" -X POST http://127.0.0.1:8799/api/quit
+          sleep 2; cat app.log
+      - name: Test the app window in a real browser
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          pip install --quiet playwright && python -m playwright install --with-deps chromium > /dev/null
+          rm -rf ci-ui && mkdir ci-ui && cp examples/config.json examples/sample-targets.csv examples/sample-exoclock.json ci-ui/
+          dotnet run --project src/StarCadence.Cli -c Release --no-build -- app --data ci-ui --port 8798 --no-browser > ui.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8798/api/ping && break; sleep 2; done
+          python tests/ui/app_ui_test.py http://127.0.0.1:8798/
 
-  publish:
-    name: program (${{ matrix.rid }})
+  package:
+    name: package (${{ matrix.name }})
     needs: test
     strategy:
       matrix:
         include:
-          - { rid: win-x64, os: windows-latest }
-          - { rid: osx-arm64, os: macos-latest }
-          - { rid: linux-x64, os: ubuntu-latest }
+          - { name: windows, rid: win-x64, os: windows-latest }
+          - { name: mac, rid: osx-arm64, os: macos-latest }
+          - { name: linux, rid: linux-x64, os: ubuntu-latest }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Publish a self-contained program
-        run: dotnet publish src/StarCadence.Cli -c Release -r ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -o dist/${{ matrix.rid }}
-      - name: Add the example and docs
-        shell: bash
-        run: cp -r examples README.md LICENSE.txt NOTICE.md dist/${{ matrix.rid }}/
-      - name: Smoke test
+      - name: Publish a self-contained program (no .NET needed to run it)
+        run: dotnet publish src/StarCadence.Cli -c Release -r ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -o dist/bin
+      - name: Smoke test the program
         shell: bash
         run: |
-          cd dist/${{ matrix.rid }}
-          ./starcadence version
-          ./starcadence plan --config examples/config.json --date 2026-12-03 --out smoke --formats txt
+          dist/bin/starcadence version
+          dist/bin/starcadence plan --config examples/config.json --date 2026-12-03 --out smoke --formats txt
+      - name: Windows folder
+        if: matrix.name == 'windows'
+        shell: bash
+        run: |
+          mkdir -p "pkg/StarCadence"
+          cp dist/bin/starcadence.exe "pkg/StarCadence/StarCadence.exe"
+          cp -r examples README.md LICENSE.txt NOTICE.md "pkg/StarCadence/"
+          cd pkg && 7z a -tzip ../StarCadence-windows.zip StarCadence > /dev/null
+      - name: Mac app (StarCadence.app)
+        if: matrix.name == 'mac'
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props)
+          APP=pkg/StarCadence/StarCadence.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp dist/bin/starcadence "$APP/Contents/MacOS/starcadence"
+          cp assets/starcadence.icns "$APP/Contents/Resources/StarCadence.icns"
+          cat > "$APP/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleName</key><string>StarCadence</string>
+            <key>CFBundleDisplayName</key><string>StarCadence</string>
+            <key>CFBundleIdentifier</key><string>io.github.techamatuer.starcadence</string>
+            <key>CFBundleVersion</key><string>$VERSION</string>
+            <key>CFBundleShortVersionString</key><string>$VERSION</string>
+            <key>CFBundleExecutable</key><string>starcadence</string>
+            <key>CFBundleIconFile</key><string>StarCadence</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>LSMinimumSystemVersion</key><string>12.0</string>
+            <key>LSUIElement</key><true/>
+            <key>NSHumanReadableCopyright</key><string>MPL-2.0</string>
+          </dict></plist>
+          EOF
+          plutil -lint "$APP/Contents/Info.plist"
+          codesign --force --deep -s - "$APP"
+          cp -r examples README.md LICENSE.txt NOTICE.md pkg/StarCadence/
+          cd pkg && ditto -c -k --sequesterRsrc --keepParent StarCadence ../StarCadence-mac.zip
+      - name: Linux folder
+        if: matrix.name == 'linux'
+        shell: bash
+        run: |
+          mkdir -p pkg/StarCadence && cp dist/bin/starcadence pkg/StarCadence/ && cp -r examples README.md LICENSE.txt NOTICE.md pkg/StarCadence/
+          tar -czf StarCadence-linux.tar.gz -C pkg StarCadence
       - uses: actions/upload-artifact@v4
         with:
-          name: starcadence-${{ matrix.rid }}
-          path: |
-            dist/${{ matrix.rid }}
-            !dist/${{ matrix.rid }}/smoke
+          name: StarCadence-${{ matrix.name }}
+          path: StarCadence-${{ matrix.name }}.*
+
+  release:
+    name: publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Create the GitHub release with the downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la out
+          gh release create "${GITHUB_REF_NAME}" out/* --repo "${GITHUB_REPOSITORY}" --title "StarCadence ${GITHUB_REF_NAME}" --notes "Downloads: **StarCadence-windows.zip** (Windows 10/11, 64-bit), **StarCadence-mac.zip** (Apple Silicon Mac), **StarCadence-linux.tar.gz**. Unzip and double-click StarCadence. See the README for the one-time security prompts."

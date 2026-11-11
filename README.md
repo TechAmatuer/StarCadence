@@ -21,6 +21,31 @@ It writes the plan as text, CSV and JSON, plus files your observatory software c
 It does **not** move the telescope, take or process images, or submit anything to the AAVSO. It plans the night;
 your observatory software runs it; you send the results.
 
+![StarCadence planning a night](docs/screenshot-tonight.png)
+
+## Download and open
+
+1. Download the file for your computer from the
+   **[latest release](https://github.com/TechAmatuer/StarCadence/releases/latest)**:
+   `StarCadence-windows.zip` (Windows 10/11), `StarCadence-mac.zip` (Apple Silicon Mac) or
+   `StarCadence-linux.tar.gz`. Nothing else needs installing.
+2. Unzip it and double-click **StarCadence** (`StarCadence.exe` on Windows, `StarCadence.app` on a Mac).
+   StarCadence opens in your web browser. It only answers this computer; nothing goes online except the
+   AAVSO and ExoClock downloads you ask for.
+3. The first time, enter your observatory and filters on the **Setup** tab, add targets on **Targets**,
+   then press **Plan this night** on **Tonight**.
+
+**First launch only.** StarCadence isn't signed with a paid Apple or Microsoft certificate, so each system asks once:
+- **Windows:** "Windows protected your PC" → **More info** → **Run anyway**. A small black window stays open while
+  StarCadence runs; close it to quit.
+- **Mac:** if it says StarCadence "can't be opened", open **System Settings → Privacy & Security**, scroll down and
+  click **Open Anyway** (or in Terminal: `xattr -dr com.apple.quarantine ~/Downloads/StarCadence`). StarCadence
+  has no Dock icon; it runs in your browser. It may ask to use your Documents folder, where it keeps your settings
+  and plans (`Documents/StarCadence`).
+
+To quit, press **Quit** in the page, or just close the tab: StarCadence stops a few minutes later. Opening it again
+keeps everything.
+
 ## Why
 
 Observers with automated observatories still pick targets by hand: which alert or campaign stars need data, which are
@@ -35,7 +60,7 @@ From [`examples/sample-output/plan.txt`](examples/sample-output/plan.txt) (sampl
 ```
 Night of 2026-12-03 at My observatory  (times America/New_York)
 Dark from 17:38 to 06:01; Moon 21% lit
-14 blocks, 14 targets from 18 candidates; 41% of the dark time used
+14 blocks, 14 targets from 17 candidates; 41% of the dark time used
 
 17:38-17:41  V Sge                  Variable  alt 57->57  B 1x40s  V 1x10s  R 1x5s  I 1x5s
       score 3.30 (Cadence 1.00, Alert 0.70, Priority 1.00)
@@ -46,8 +71,9 @@ Dark from 17:38 to 06:01; Moon 21% lit
 ...
 23:33-04:02  Sample-1b              Transit  [fixed]  alt 81->48  R 1463x8s
       score 1.85 (Priority 0.80, LowCoverage 0.75, Slew 1.00); transit mid 06:48 UTC
+      - ExoClock priority high, depth 18 mmag
 
-Not planned (4):
+Not planned (3):
   T CrB: not observable tonight (too low)
   Sample-2b: transit mid 10:40 UTC: window runs outside dark time
 ```
@@ -117,6 +143,21 @@ Not planned (4):
 Running the planner again during the night (`--from now`) plans the rest of the night: after clouds, a fault, or a
 new alert.
 
+## The app window
+
+| Tonight | Targets | Setup |
+|---|---|---|
+| ![Tonight](docs/screenshot-tonight.png) | ![Targets](docs/screenshot-targets.png) | ![Setup](docs/screenshot-setup.png) |
+
+- **Tonight:** pick the night, press *Plan this night* (or *Re-plan from now* after clouds or a new alert). You get a
+  timeline, the plan with the reasons for each star, and download buttons for N.I.N.A., Ekos and a spreadsheet.
+  After the night, *Mark finished visits as observed* keeps the repeat cadence right.
+- **Targets:** your AAVSO Target Tool key and sections, ExoClock settings, a *Download now* button, your CSV lists
+  (drop in a Target Tool export or an ExoPlanets list) and the watch list.
+- **Setup:** observatory position, darkness and Moon limits, filters with their exposure at magnitude 12, timing,
+  and (advanced) the scoring weights.
+- **Night mode** turns the page red for use at the telescope.
+
 ## Outputs
 
 | File | For |
@@ -127,7 +168,9 @@ new alert.
 | `ekos/plan.esl` + `.esq` files | **KStars/Ekos** (macOS, Linux, Windows). Transits and minima start and stop at their times; other jobs run in plan order. |
 | `nina-target-scheduler.csv` | **N.I.N.A. Target Scheduler** bulk import (Windows), one row per target, typed by exposure length so each type maps to an exposure template. Target Scheduler has no time windows, so transits and minima are left out and listed on screen. |
 
-## Quick start
+## Running from source (command line)
+
+The app window is the easy way. The command line does the same, for scheduled or automatic runs.
 
 **1. Install the .NET SDK (version 8 or newer), once.**
 
@@ -157,15 +200,13 @@ reference exposures, and your sources. Then:
 dotnet run --project src/StarCadence.Cli -c Release -- plan --config my-observatory/config.json --formats txt,csv,ekos,nina
 ```
 
-Ready-made programs for Windows, Mac (Apple Silicon) and Linux are built on every change: open the latest run under
-[Actions](https://github.com/TechAmatuer/StarCadence/actions) and download `starcadence-win-x64`,
-`starcadence-osx-arm64` or `starcadence-linux-x64`. They need no .NET install. On a Mac, after unzipping, run
-`chmod +x starcadence && xattr -d com.apple.quarantine starcadence` once in that folder (downloads lose the
-"executable" mark, and macOS blocks unsigned downloaded programs until told otherwise).
+To open the app window from source: `dotnet run --project src/StarCadence.Cli -c Release` (no arguments).
 
 ## Commands
 
 ```
+starcadence                                            open the app window (settings in Documents/StarCadence)
+starcadence app       [--data FOLDER] [--port N] [--no-browser] [--stay]
 starcadence init      [--dir FOLDER]                   write an example config.json to edit
 starcadence fetch     [--config FILE]                  download AAVSO Target Tool and ExoClock data
 starcadence plan      [--config FILE] [--date YYYY-MM-DD] [--from now|TIME]
@@ -196,12 +237,15 @@ Without a key, export a CSV from the Target Tool website and set `sources.target
 - **Transit and minimum times** convert BJD/HJD to UTC within 6 seconds.
 - **35 automated tests** check the planner's rules: no overlaps, every block observable, windows kept, cadence spacing,
   sources, exporters, and number formats under other locales. GitHub Actions runs them on Windows, macOS (Apple
-  Silicon) and Linux on every change (badge at the top).
+  Silicon) and Linux on every change (badge at the top), starts the app window on all three, and drives it in a
+  real browser on Linux (plan, downloads, saving settings, refusing bad input).
+- **The app window** only listens on this computer (127.0.0.1); every change needs a key that only its own page
+  has, so other web pages can't use it.
 - **File formats**: Ekos files follow the KStars source; the Target Scheduler CSV is read back the way its importer
   reads it.
 
-**Not yet tested:** loading the output into a live Ekos or N.I.N.A. session; live Target Tool and ExoClock downloads.
-Please open an issue if something doesn't load.
+**Not yet tested:** loading the output into a live Ekos or N.I.N.A. session; live Target Tool and ExoClock downloads;
+the Windows and Mac downloads on real (non-CI) machines. Please open an issue if something doesn't work.
 
 ## Known limits
 

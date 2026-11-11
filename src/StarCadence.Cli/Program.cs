@@ -16,6 +16,7 @@ CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 var a = new Args(args);
 try {
     return a.Command switch {
+        "app" => await AppServer.Run(a.Get("data") ?? AppServer.DefaultDataDir(), int.TryParse(a.Get("port"), out var port) ? port : AppServer.PreferredPort, !a.Has("no-browser"), a.Has("stay")),
         "init" => Commands.Init(a),
         "fetch" => await Commands.Fetch(a),
         "plan" => await Commands.Plan(a),
@@ -23,7 +24,8 @@ try {
         "exposures" => Commands.Exposures(a),
         "ephem" => Commands.Ephem(a),
         "version" or "--version" => Commands.Version(),
-        _ => Commands.Help()
+        "help" or "--help" or "-h" => Commands.Help(),
+        _ => Commands.Help(unknown: a.Command)
     };
 } catch (Exception e) when (e is InvalidDataException or FileNotFoundException or JsonException or ArgumentException or DirectoryNotFoundException) {
     Console.Error.WriteLine("Error: " + e.Message);
@@ -36,7 +38,7 @@ sealed class Args {
     readonly HashSet<string> _flags = new(StringComparer.OrdinalIgnoreCase);
 
     public Args(string[] argv) {
-        Command = argv.Length > 0 ? argv[0].ToLowerInvariant() : "help";
+        Command = argv.Length > 0 ? argv[0].ToLowerInvariant() : "app";   // double-clicked: open the app window
         for (var i = 1; i < argv.Length; i++) {
             var k = argv[i];
             if (!k.StartsWith("--")) continue;
@@ -52,9 +54,13 @@ sealed class Args {
 }
 
 static class Commands {
-    public static int Help() {
+    public static int Help(string? unknown = null) {
+        if (unknown is not null) Console.Error.WriteLine($"Unknown command '{unknown}'.\n");
         Console.WriteLine("""
             StarCadence: night planner for variable stars and exoplanet transits (Windows, macOS, Linux)
+
+              starcadence                                    open the app window (same as: starcadence app)
+              starcadence app       [--data FOLDER] [--port N] [--no-browser] [--stay]
 
               starcadence init      [--dir FOLDER]                 write an example config.json to edit
               starcadence fetch     [--config FILE]                download AAVSO Target Tool and ExoClock data
@@ -68,7 +74,7 @@ static class Commands {
 
             Times are UTC unless they end with an offset. Coordinates: "05 34 31.9" (hours) / "+22 00 52" or decimal degrees.
             """);
-        return 0;
+        return unknown is null ? 0 : 1;
     }
 
     public static int Version() {
@@ -108,54 +114,16 @@ static class Commands {
     public static async Task<int> Plan(Args a) {
         var (cfg, dir) = LoadConfig(a);
         if (a.Has("fetch")) await Fetch(a);
-
-        Night? night;
-        DateOnly date;
-        var stem = "plan";
-        var from = a.Get("from");
-        if (from is not null) {
-            var t = from.Equals("now", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : ParseTime(from);
-            date = Night.CurrentOrNext(cfg.Site, t);
-            night = Night.From(cfg.Site, t, cfg.Planner.StepMinutes);
-            stem = $"replan-{t:HHmm}";   // keeps the full-night plan files
-        } else {
-            date = a.Get("date") is string d ? DateOnly.ParseExact(d, "yyyy-MM-dd", CultureInfo.InvariantCulture) : Night.CurrentOrNext(cfg.Site, DateTime.UtcNow);
-            night = Night.ForDate(cfg.Site, date, cfg.Planner.StepMinutes);
-        }
-        if (night is null) { Console.Error.WriteLine($"No dark time on the night of {date:yyyy-MM-dd} at this site (Sun never below {cfg.Site.SunAltitude} degrees, or it is already morning)."); return 1; }
-
-        var loader = new SourceLoader(cfg, dir, null);
-        var results = loader.LoadAll(night.StartUtc);
-        foreach (var r in results) foreach (var m in r.Messages.Take(a.Has("verbose") ? 1000 : 3)) Console.WriteLine("  " + m);
-        var history = History.Load(Resolve(dir, cfg.HistoryFile));
-        var plan = new Planner(cfg).Build(results.SelectMany(r => r.Targets), history, night, date);
-        if (Night.DarkLimits(cfg.Site, date).start is DateTime darkStart && night.StartUtc > darkStart) {
-            plan.NightStartUtc = darkStart;          // the report shows the real dark time
-            plan.PlannedFromUtc = night.StartUtc;    // and that this plan starts later
-        }
-
-        var outDir = Path.GetFullPath(a.Get("out") ?? Path.Combine(dir, "plans", date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
-        Directory.CreateDirectory(outDir);
-        var formats = (a.Get("formats") ?? "txt,json,csv").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(f => f.ToLowerInvariant()).ToHashSet();
-        var written = new List<string>();
-        void Write(string name, string text) { var p = Path.Combine(outDir, name); File.WriteAllText(p, text); written.Add(p); }
-        var txt = PlanExport.Text(plan);
-        if (formats.Contains("txt")) Write(stem + ".txt", txt);
-        if (formats.Contains("json")) Write(stem + ".json", PlanExport.Json(plan));
-        if (formats.Contains("csv")) Write(stem + ".csv", PlanExport.Csv(plan));
-        if (formats.Contains("nina")) {
-            var (csv, left) = PlanExport.NinaTargetScheduler(plan, cfg.Export);
-            Write((stem == "plan" ? "nina-target-scheduler" : "nina-target-scheduler-" + stem) + ".csv", csv);
-            if (left.Count > 0) Console.WriteLine($"  N.I.N.A. Target Scheduler CSV leaves out {left.Count} fixed-window target(s) (it has no time windows): {string.Join(", ", left)}");
-        }
-        if (formats.Contains("ekos")) {
-            var ekosDir = Path.Combine(outDir, stem == "plan" ? "ekos" : "ekos-" + stem);
-            Directory.CreateDirectory(ekosDir);
-            foreach (var (name, text) in PlanExport.Ekos(plan, cfg, cfg.Export.EkosSequenceDir ?? ekosDir)) { var p = Path.Combine(ekosDir, name); File.WriteAllText(p, text); if (name == "plan.esl") written.Add(p); }
-        }
+        DateTime? from = a.Get("from") is string f ? (f.Equals("now", StringComparison.OrdinalIgnoreCase) ? DateTime.UtcNow : ParseTime(f)) : null;
+        DateOnly? date = a.Get("date") is string d ? DateOnly.ParseExact(d, "yyyy-MM-dd", CultureInfo.InvariantCulture) : null;
+        var formats = (a.Get("formats") ?? "txt,json,csv").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var run = PlanRunner.Run(cfg, dir, date, from, a.Get("out"), formats, out var error);
+        if (run is null) { Console.Error.WriteLine(error); return 1; }
+        foreach (var r in run.Sources) foreach (var m in r.Messages.Take(a.Has("verbose") ? 1000 : 3)) Console.WriteLine("  " + m);
+        foreach (var m in run.Messages) Console.WriteLine("  " + m);
         Console.WriteLine();
-        Console.WriteLine(a.Has("quiet") ? txt.Split('\n')[2] : txt);
-        foreach (var p in written) Console.WriteLine("Wrote " + p);
+        Console.WriteLine(a.Has("quiet") ? run.Text.Split('\n')[2] : run.Text);
+        foreach (var p in run.Files) Console.WriteLine("Wrote " + p);
         return 0;
     }
 
@@ -213,7 +181,7 @@ static class Commands {
         return 0;
     }
 
-    static string Resolve(string dir, string p) => Path.IsPathRooted(p) ? p : Path.GetFullPath(Path.Combine(dir, p));
+    static string Resolve(string dir, string p) => PlanRunner.Resolve(dir, p);
 
     static DateTime ParseTime(string s) =>
         DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var d)

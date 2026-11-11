@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StarCadence</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #0b1024; --panel: #131a36; --panel2: #1a2347; --line: #2a3566; --text: #e7ebf7; --muted: #9aa5c8;
+    --accent: #6fe3d4; --accent2: #ffb547; --danger: #ff7a7a; --ok: #7be38f;
+    --var: #5b8def; --series: #a77bf3; --transit: #ffb547; --event: #6fe3d4; --standard: #9aa5c8;
+  }
+  body.redmode {
+    --bg: #0a0000; --panel: #160303; --panel2: #200505; --line: #3a0b0b; --text: #ff6b6b; --muted: #b84a4a;
+    --accent: #ff5050; --accent2: #ff8c5a; --danger: #ffb0b0; --ok: #ff7070;
+    --var: #a83232; --series: #c24646; --transit: #ff6b4a; --event: #d45050; --standard: #803030;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header img { width: 36px; height: 36px; }
+  body.redmode header img { filter: grayscale(1) sepia(1) saturate(6) hue-rotate(-50deg) brightness(.8); }
+  .brand { font-weight: 700; font-size: 19px; letter-spacing: .3px; }
+  .brand small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); letter-spacing: 0; }
+  nav { display: flex; gap: 4px; margin-left: 18px; }
+  nav button { background: none; border: 0; color: var(--muted); padding: 8px 14px; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  nav button.on { background: var(--panel2); color: var(--text); font-weight: 600; }
+  .spacer { flex: 1; }
+  main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 60px; }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  h3 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .6px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px 16px; }
+  label.f { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  label.f span.hint { font-size: 12px; opacity: .8; }
+  input, select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; font-size: 14px; width: 100%; }
+  input[type=checkbox] { width: auto; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .b { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .b:hover { border-color: var(--accent); }
+  label.b { display: inline-block; }
+  button.primary { background: var(--accent); color: #06212b; border-color: var(--accent); font-weight: 700; }
+  body.redmode button.primary { color: #1a0000; }
+  button.big { padding: 11px 22px; font-size: 16px; }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  a.dl { display: inline-flex; align-items: center; gap: 6px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; text-decoration: none; font-size: 14px; }
+  a.dl:hover { border-color: var(--accent); }
+  a.dl small { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--line); padding: 8px 6px; }
+  td { border-bottom: 1px solid var(--line); padding: 8px 6px; vertical-align: top; }
+  td input, td select { padding: 5px 7px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; color: #08101f; }
+  .k-variable { background: var(--var); } .k-series { background: var(--series); } .k-transit { background: var(--transit); } .k-event { background: var(--event); } .k-standard { background: var(--standard); }
+  .stat { display: flex; gap: 26px; flex-wrap: wrap; margin: 4px 0 14px; }
+  .stat div b { display: block; font-size: 22px; }
+  .stat div span { color: var(--muted); font-size: 13px; }
+  .banner { border-left: 4px solid var(--accent2); background: var(--panel2); padding: 12px 14px; border-radius: 8px; margin-bottom: 16px; }
+  .err { border-left-color: var(--danger); }
+  .notes { margin: 4px 0 0; padding-left: 16px; color: var(--muted); font-size: 13px; }
+  details summary { cursor: pointer; color: var(--muted); margin: 8px 0; }
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--accent); padding: 10px 18px; border-radius: 10px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 10; }
+  .toast.show { opacity: 1; }
+  .toast.bad { border-color: var(--danger); }
+  svg.tl text { fill: var(--muted); font-size: 12px; }
+  svg.tl .lbl { fill: #08101f; font-size: 11px; font-weight: 600; }
+  .empty { text-align: center; padding: 40px 10px; color: var(--muted); }
+  .dirty { box-shadow: 0 0 0 2px var(--accent2); }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 5px; font-size: 13px; }
+  @media (max-width: 760px) { nav { margin-left: 0; width: 100%; } .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <img src="/icon.svg" alt="">
+  <div class="brand">StarCadence<small id="site">&nbsp;</small></div>
+  <nav>
+    <button data-tab="tonight" class="on">Tonight</button>
+    <button data-tab="targets">Targets</button>
+    <button data-tab="setup">Setup</button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="b" id="red" title="Red light for use at the telescope">Night mode</button>
+  <button class="b" id="quit" title="Stop StarCadence">Quit</button>
+</header>
+<main>
+  <section id="tab-tonight"></section>
+  <section id="tab-targets" hidden></section>
+  <section id="tab-setup" hidden></section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+const TOKEN = "__SC_TOKEN__";
+const S = { state: null, cfg: null, plan: null, dirty: false, busy: false };
+const KINDS = ["variable", "series", "transit", "event", "standard"];
+const BANDS = ["U", "B", "V", "R", "I", "SU", "SG", "SR", "SI", "SZ", "CV", "CR", "TB", "TG", "TR", "J", "H", "K"];
+const SECTIONS = { ac: "Alerts / Campaigns", cv: "Cataclysmic variables", eb: "Eclipsing binaries", spp: "Short-period pulsators", lpv: "Long-period variables", yso: "Young stellar objects", het: "High-energy targets", ep: "Exoplanets", misc: "Miscellaneous" };
+const WHY_SHORT = { Priority: "high priority", Cadence: "overdue", LowCoverage: "few recent observations", Alert: "AAVSO alert/campaign", SettingSoonest: "about to set", Deadline: "campaign ends soon", Slew: "short slew", Altitude: "high in the sky", Efficiency: "short visit" };
+const RULE_HELP = { Priority: "targets marked high priority", Cadence: "stars overdue for their cadence", LowCoverage: "stars with few recent observations", Alert: "AAVSO alert and campaign targets", SettingSoonest: "targets about to set", Deadline: "campaigns about to end", Slew: "short slews from the last target", Altitude: "higher in the sky", Efficiency: "short visits, so more stars fit" };
+
+const $ = (sel, el = document) => el.querySelector(sel);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = (x, d = 1) => (x === null || x === undefined || Number.isNaN(x)) ? "" : (+x).toFixed(d);
+
+async function api(path, body) {
+  if (window.SC_DEMO) return window.SC_DEMO(path, body);
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-StarCadence": TOKEN }, body: JSON.stringify(body) };
+  let r;
+  try { r = await fetch(path, opt); }
+  catch (e) { throw new Error("StarCadence is not running any more. Open it again (your settings are kept)."); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("Something went wrong (" + r.status + ")"));
+  return j;
+}
+
+function toast(msg, bad = false) {
+  const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (bad ? " bad" : "");
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.className = "toast", bad ? 6000 : 2500);
+}
+
+function tab(name) {
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  for (const t of ["tonight", "targets", "setup"]) $("#tab-" + t).hidden = t !== name;
+  window.scrollTo(0, 0);
+}
+
+/* ---------- editing the configuration ---------- */
+function getPath(obj, path) { return path.split(".").reduce((o, k) => o?.[k], obj); }
+function setPath(obj, path, val) {
+  const ks = path.split("."); let o = obj;
+  for (let i = 0; i < ks.length - 1; i++) { if (o[ks[i]] === undefined || o[ks[i]] === null) o[ks[i]] = {}; o = o[ks[i]]; }
+  o[ks[ks.length - 1]] = val;
+}
+function field(path, label, opts = {}) {
+  const v = getPath(S.cfg, path);
+  const type = opts.type || (typeof v === "number" ? "number" : "text");
+  const hint = opts.hint ? `<span class="hint">${opts.hint}</span>` : "";
+  if (opts.select) {
+    return `<label class="f">${label}<select data-p="${path}" data-t="${opts.kind || "text"}">${opts.select.map(([val, txt]) => `<option value="${esc(val)}" ${String(val) === String(v) ? "selected" : ""}>${esc(txt)}</option>`).join("")}</select>${hint}</label>`;
+  }
+  if (type === "checkbox") return `<label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" data-p="${path}" data-t="bool" ${v ? "checked" : ""}>${label}</label>`;
+  return `<label class="f">${label}<input type="${type === "number" ? "number" : "text"}" ${opts.step ? `step="${opts.step}"` : 'step="any"'} data-p="${path}" data-t="${type === "number" ? "num" : (opts.kind || "text")}" value="${esc(v ?? "")}" ${opts.placeholder ? `placeholder="${esc(opts.placeholder)}"` : ""}>${hint}</label>`;
+}
+function readInput(el) {
+  const t = el.dataset.t;
+  if (t === "bool") return el.checked;
+  if (t === "num") return el.value === "" ? null : Number(el.value);
+  if (t === "list") return el.value.split(/[,;\s]+/).map(x => x.trim()).filter(Boolean).map(x => x.toUpperCase());
+  if (t === "optnum") return el.value === "" ? null : Number(el.value);
+  if (t === "opttext") return el.value.trim() === "" ? null : el.value.trim();
+  return el.value;
+}
+document.addEventListener("input", e => {
+  const el = e.target;
+  if (!el.dataset || !el.dataset.p) return;
+  setPath(S.cfg, el.dataset.p, readInput(el));
+  if (!S.dirty) { S.dirty = true; document.querySelectorAll(".save").forEach(b => b.classList.add("dirty")); }
+});
+
+async function save() {
+  try {
+    S.state = await api("/api/config", S.cfg);
+    S.cfg = structuredClone(S.state.config); S.dirty = false;
+    renderAll(); toast("Saved");
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---------- Tonight ---------- */
+function renderTonight() {
+  const st = S.state, p = S.plan;
+  const total = (st.sources || []).reduce((a, s) => a + s.count, 0);
+  let h = "";
+  if (st.problem) h += `<div class="banner err">Your settings have a problem: ${esc(st.problem)} <button class="b" onclick="tab('setup')">Fix in Setup</button></div>`;
+  h += `<div class="card"><div class="row">
+      <label class="f" style="max-width:200px">Night of (evening date)<input type="date" id="date" value="${esc(S.planDate || st.tonight || "")}"></label>
+      <button class="b primary big" id="planbtn" ${S.busy ? "disabled" : ""}>${S.busy ? "Planning..." : "Plan this night"}</button>
+      <button class="b" id="replan" ${S.busy ? "disabled" : ""} title="Plan the rest of tonight from now (after clouds, a fault or a new alert)">Re-plan from now</button>
+      <span class="muted small">${total} target${total === 1 ? "" : "s"} loaded from ${(st.sources || []).filter(s => s.count > 0).length} source(s). <a href="#" onclick="tab('targets');return false" style="color:var(--accent)">Change targets</a></span>
+    </div></div>`;
+  if (!p) {
+    h += `<div class="card empty"><p style="font-size:17px;color:var(--text)">Press <b>Plan this night</b>.</p>
+      <p>StarCadence picks which stars to observe, when, with which filters and exposures, and makes files for N.I.N.A. and Ekos.</p>
+      ${total === 0 ? `<p>You have no targets yet: add some on the <a href="#" onclick="tab('targets');return false" style="color:var(--accent)">Targets</a> tab.</p>` : ""}</div>`;
+    $("#tab-tonight").innerHTML = h; bindTonight(); return;
+  }
+  const plan = p.plan, blocks = plan.blocks;
+  const used = Math.round(blocksMinutes(blocks) / Math.max(1, (new Date(plan.nightEndUtc) - new Date(plan.plannedFromUtc)) / 60000) * 100);
+  h += `<div class="card"><h2>Night of ${esc(p.date)} <span class="muted small" style="font-weight:400">times in ${esc(p.zone)}</span></h2>
+    <div class="stat">
+      <div><b>${esc(p.dark.start)}–${esc(p.dark.end)}</b><span>dark time${p.dark.from !== p.dark.start ? `, planned from ${esc(p.dark.from)}` : ""}</span></div>
+      <div><b>${new Set(blocks.map(b => b.target)).size}</b><span>targets (${blocks.length} visits)</span></div>
+      <div><b>${blocks.filter(b => b.fixed).length}</b><span>timed windows</span></div>
+      <div><b>${used}%</b><span>of the dark time used</span></div>
+      <div><b>${Math.round(plan.moonIllumination * 100)}%</b><span>Moon lit</span></div>
+    </div>
+    ${timeline(p)}
+    <div class="row small muted" style="margin-top:6px">${KINDS.map(k => `<span><span class="pill k-${k}">&nbsp;</span> ${k === "variable" ? "variable star" : k === "event" ? "eclipse/event" : k === "series" ? "time series" : k}</span>`).join(" ")}</div>
+  </div>`;
+  h += `<div class="card"><h3>Files for your observatory</h3><div class="row">${downloads(p)}</div>
+    ${(p.messages || []).map(m => `<p class="muted small" style="margin:10px 0 0">${esc(m)}</p>`).join("")}
+    <p class="muted small" style="margin:10px 0 0">Saved in <code>${esc(p.folder)}</code></p></div>`;
+  h += `<div class="card"><h3>The plan</h3><div style="overflow-x:auto"><table><thead><tr><th>Time</th><th>Target</th><th>Type</th><th>Exposures</th><th class="hide-sm">Altitude</th><th>Why</th></tr></thead><tbody>`;
+  blocks.forEach((b, i) => {
+    const loc = p.local[i];
+    const steps = b.steps.map(s => `${esc(s.filter)} ${s.count}×${num(s.seconds, s.seconds < 10 && s.seconds % 1 ? 1 : 0)}s`).join(" &nbsp;");
+    const why = (b.why || []).slice().sort((x, y) => y.weight * y.score - x.weight * x.score).filter(w => w.weight * w.score > 0).slice(0, 3)
+      .map(w => esc(WHY_SHORT[w.rule] || w.rule)).join(", ");
+    h += `<tr><td style="white-space:nowrap">${esc(loc.start)}–${esc(loc.end)}${b.visit > 1 ? `<br><span class="muted small">visit ${b.visit}</span>` : ""}</td>
+      <td><b>${esc(b.target)}</b>${b.window ? `<br><span class="small" style="color:var(--accent2)">${esc(b.window)}</span>` : ""}</td>
+      <td><span class="pill k-${esc(b.kind)}">${esc(b.kind)}</span></td>
+      <td class="small">${steps}</td>
+      <td class="small hide-sm">${num(b.altStart, 0)}° → ${num(b.altEnd, 0)}°</td>
+      <td class="small">${why}${(b.notes || []).length ? `<ul class="notes">${b.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</td></tr>`;
+  });
+  h += `</tbody></table></div></div>`;
+  if (plan.skipped.length) {
+    const groups = {};
+    plan.skipped.forEach(s => (groups[s.target] = groups[s.target] || new Set()).add(s.reason));
+    h += `<div class="card"><details><summary>${Object.keys(groups).length} target(s) not planned, and why</summary><table><tbody>${Object.entries(groups).map(([t, r]) => `<tr><td><b>${esc(t)}</b></td><td class="small muted">${[...r].map(esc).join("; ")}</td></tr>`).join("")}</tbody></table></details></div>`;
+  }
+  h += `<div class="card"><div class="row"><button class="b" id="record">Mark finished visits as observed</button>
+    <span class="muted small">After the night, this records every visit whose time has passed, so StarCadence knows when each star is due again.</span></div></div>`;
+  $("#tab-tonight").innerHTML = h; bindTonight();
+}
+function blocksMinutes(blocks) { return blocks.reduce((a, b) => a + (new Date(b.endUtc) - new Date(b.startUtc)) / 60000, 0); }
+function downloads(p) {
+  const f = name => p.files.find(x => x.split("/").pop().startsWith(name));
+  const items = [];
+  const nina = f("nina-target-scheduler"); if (nina) items.push(`<a class="dl" href="/api/file?path=${encodeURIComponent(nina)}" download>N.I.N.A. Target Scheduler <small>.csv</small></a>`);
+  if (p.files.some(x => x.endsWith("plan.esl"))) items.push(`<a class="dl" href="/api/ekoszip?path=${encodeURIComponent(p.ekos)}" download>KStars/Ekos <small>.zip</small></a>`);
+  for (const [name, label] of [["plan.csv", "Spreadsheet"], ["plan.txt", "Printable plan"], ["plan.json", "Full plan"]]) {
+    const x = p.files.find(y => y.endsWith(name) || y.match(new RegExp("replan-\\d{4}\\." + name.split(".")[1] + "$")));
+    if (x) items.push(`<a class="dl" href="/api/file?path=${encodeURIComponent(x)}" download>${label} <small>.${name.split(".")[1]}</small></a>`);
+  }
+  return items.join("");
+}
+function timeline(p) {
+  const plan = p.plan, t0 = new Date(plan.nightStartUtc).getTime(), t1 = new Date(plan.nightEndUtc).getTime();
+  const W = 1000, H = 92, x = t => (t - t0) / (t1 - t0) * W;
+  let s = `<svg class="tl" viewBox="0 -4 ${W} ${H + 22}" width="100%" preserveAspectRatio="none" style="height:120px">`;
+  s += `<rect x="0" y="0" width="${W}" height="${H - 24}" rx="6" fill="var(--panel2)"/>`;
+  if (plan.plannedFromUtc !== plan.nightStartUtc) s += `<rect x="0" y="0" width="${x(new Date(plan.plannedFromUtc).getTime())}" height="${H - 24}" rx="6" fill="var(--bg)" opacity=".7"/>`;
+  const off = (p.offsetHours || 0) * 3600000;
+  const firstHour = Math.ceil((t0 + off) / 3600000) * 3600000 - off;
+  for (let t = firstHour; t <= t1; t += 3600000) {
+    const xx = x(t), hh = new Date(t + off).getUTCHours();
+    s += `<line x1="${xx}" x2="${xx}" y1="0" y2="${H - 20}" stroke="var(--line)"/>`;
+    if (xx > 18 && xx < W - 18) s += `<text x="${xx}" y="${H - 6}" text-anchor="middle">${String(hh).padStart(2, "0")}:00</text>`;
+  }
+  plan.blocks.forEach((b, i) => {
+    const a = x(new Date(b.startUtc).getTime()), z = x(new Date(b.endUtc).getTime()), w = Math.max(1.5, z - a);
+    const y = b.fixed ? 6 : 22, hgt = b.fixed ? 56 : 40;
+    s += `<g><title>${esc(p.local[i].start + "–" + p.local[i].end + "  " + b.target + " (" + b.kind + ")" + (b.window ? "  " + b.window : ""))}</title>
+      <rect x="${a}" y="${y}" width="${w}" height="${hgt}" rx="3" class="k-${esc(b.kind)}" fill="var(--${b.kind === "variable" ? "var" : b.kind})" stroke="var(--bg)" stroke-width="1"/>
+      ${w > 70 ? `<text class="lbl" x="${a + 5}" y="${y + 16}">${esc(b.target.slice(0, Math.floor(w / 7)))}</text>` : ""}</g>`;
+  });
+  return s + "</svg>";
+}
+function bindTonight() {
+  const pb = $("#planbtn"); if (pb) pb.onclick = () => plan(false);
+  const rp = $("#replan"); if (rp) rp.onclick = () => plan(true);
+  const d = $("#date"); if (d) d.onchange = () => S.planDate = d.value;
+  const rec = $("#record");
+  if (rec) rec.onclick = async () => {
+    const j = S.plan.files.find(f => f.endsWith(".json"));
+    try { const r = await api("/api/record", { path: j }); toast(`Recorded ${r.recorded} visit(s)` + (r.notYet ? `; ${r.notYet} not finished yet` : "")); }
+    catch (e) { toast(e.message, true); }
+  };
+}
+async function plan(fromNow) {
+  if (S.dirty) { toast("Save your changes first (Setup or Targets tab).", true); return; }
+  S.busy = true; renderTonight();
+  try { S.plan = await api("/api/plan", { date: $("#date")?.value || S.planDate || null, fromNow }); S.planDate = S.plan.date; }
+  catch (e) { toast(e.message, true); }
+  S.busy = false; renderTonight();
+}
+
+/* ---------- Targets ---------- */
+function renderTargets() {
+  const st = S.state, c = S.cfg;
+  if (!c) { $("#tab-targets").innerHTML = `<div class="banner err">${esc(st.problem || "Settings could not be read.")}</div>`; return; }
+  const src = name => (st.sources || []).find(s => s.source === name);
+  const tt = src("AAVSO Target Tool") || src("AAVSO Target Tool export");
+  const keyText = { environment: "found in the environment variable " + esc(c.sources.targetToolKeyVariable), saved: "saved on this computer", none: "not set" }[st.keyStatus];
+  let h = `<div class="card"><h2>AAVSO Target Tool</h2>
+    <p class="muted small" style="margin-top:0">Alert, campaign and other AAVSO targets with their cadence, filters and last observation. Your API key is on your AAVSO account page (Target Tool &rarr; API key).</p>
+    <div class="row"><label class="f" style="max-width:380px">API key <span class="hint">Status: ${keyText}${st.keyStatus === "saved" ? " (in a file only you can read)" : ""}</span><input type="password" id="key" autocomplete="off" placeholder="${st.keyStatus === "none" ? "paste your key" : "paste a new key to replace it"}"></label>
+      <button class="b" id="savekey">Save key</button>${st.keyStatus === "saved" ? `<button class="b danger" id="delkey">Remove key</button>` : ""}</div>
+    <h3 style="margin-top:14px">Sections to download</h3><div class="row small">${Object.entries(SECTIONS).map(([k, v]) => `<label><input type="checkbox" class="sec" value="${k}" ${c.sources.targetToolSections.includes(k) ? "checked" : ""}> ${esc(v)}</label>`).join("")}</div>
+    <p class="small muted">${tt ? `${tt.count} targets loaded` : "Nothing downloaded yet"}${st.downloads?.targetTool ? `, downloaded ${esc(st.downloads.targetTool)}` : ""}.</p></div>`;
+  const ex = src("ExoClock");
+  h += `<div class="card"><h2>ExoClock transits</h2>
+    <p class="muted small" style="margin-top:0">Exoplanets that need transit timings. Each transit becomes a timed window (ingress to egress plus a baseline).</p>
+    <div class="grid">${field("sources.exoClock", "Use ExoClock targets", { type: "checkbox" })}
+      ${field("sources.exoClockMaxMag", "Faintest star (mag)")}
+      ${field("sources.exoClockMinDepthMmag", "Shallowest transit (mmag)")}</div>
+    <div class="row small" style="margin-top:8px">Priorities: ${["alert", "high", "medium", "low"].map(k => `<label><input type="checkbox" class="pri" value="${k}" ${c.sources.exoClockPriorities.includes(k) ? "checked" : ""}> ${k}</label>`).join("")}</div>
+    <p class="small muted">${ex ? `${ex.count} planets loaded` : "Nothing downloaded yet"}${st.downloads?.exoClock ? `, downloaded ${esc(st.downloads.exoClock)}` : ""}.</p></div>`;
+  h += `<div class="card"><div class="row"><button class="b primary" id="fetch">Download Target Tool and ExoClock data now</button><span class="muted small" id="fetchmsg">Saves a copy, so planning also works offline.</span></div></div>`;
+  h += `<div class="card"><h2>Your target lists</h2>
+    <p class="muted small" style="margin-top:0">Any CSV with columns for name, RA and Dec (in any order). Target Tool exports and ExoPlanets plug-in lists work as they are. Optional columns: magnitude, period, epoch, cadence, filters, priority.</p>
+    <table><tbody>${c.sources.csvFiles.map(f => { const r = (st.sources || []).find(s => s.source === f.split("/").pop()); return `<tr><td>${esc(f)}</td><td class="muted small">${r ? r.count + " targets" : ""}</td><td style="text-align:right"><button class="b danger" data-rmlist="${esc(f)}">Remove</button></td></tr>`; }).join("") || `<tr><td class="muted">No lists yet.</td></tr>`}</tbody></table>
+    <div class="row" style="margin-top:10px"><label class="b" style="display:inline-block">Add a CSV list…<input type="file" id="csv" accept=".csv,text/csv" hidden></label></div></div>`;
+  h += `<div class="card"><h2>Watch list</h2>
+    <p class="muted small" style="margin-top:0">Stars you always want. RA as <code>21 42 42.8</code>, Dec as <code>+43 35 10</code>. Cadence in days (0.25 = four times a night). Filters as AAVSO codes, e.g. <code>B V</code>; empty = all.</p>
+    <div style="overflow-x:auto"><table><thead><tr><th>Name</th><th>RA</th><th>Dec</th><th>Mag now</th><th>Brightest</th><th>Cadence (d)</th><th>Filters</th><th>Priority 0–1</th><th></th></tr></thead><tbody>
+    ${c.watchList.map((w, i) => `<tr>
+      <td><input data-p="watchList.${i}.name" value="${esc(w.name)}"></td>
+      <td><input data-p="watchList.${i}.ra" value="${esc(w.ra || "")}" style="min-width:110px"></td>
+      <td><input data-p="watchList.${i}.dec" value="${esc(w.dec || "")}" style="min-width:110px"></td>
+      <td><input data-p="watchList.${i}.mag" data-t="optnum" type="number" step="any" value="${esc(w.mag ?? "")}"></td>
+      <td><input data-p="watchList.${i}.magBright" data-t="optnum" type="number" step="any" value="${esc(w.magBright ?? "")}"></td>
+      <td><input data-p="watchList.${i}.cadenceDays" data-t="optnum" type="number" step="any" value="${esc(w.cadenceDays ?? "")}"></td>
+      <td><input data-p="watchList.${i}.filters" data-t="list" value="${esc((w.filters || []).join(" "))}"></td>
+      <td><input data-p="watchList.${i}.priority" data-t="optnum" type="number" step="0.1" min="0" max="1" value="${esc(w.priority ?? "")}"></td>
+      <td><button class="b danger" data-rmwatch="${i}">✕</button></td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="row" style="margin-top:10px"><button class="b" id="addwatch">Add a star</button><div class="spacer"></div><button class="b primary save" id="savet">Save changes</button></div></div>`;
+  h += `<div class="card"><details><summary>What each source loaded</summary>${(st.sources || []).map(s => `<p><b>${esc(s.source)}</b>: ${s.count} targets<br><span class="small muted">${(s.messages || []).map(esc).join("<br>")}</span></p>`).join("")}</details></div>`;
+  $("#tab-targets").innerHTML = h;
+  document.querySelectorAll(".sec").forEach(el => el.onchange = () => { c.sources.targetToolSections = [...document.querySelectorAll(".sec:checked")].map(x => x.value); markDirty(); });
+  document.querySelectorAll(".pri").forEach(el => el.onchange = () => { c.sources.exoClockPriorities = [...document.querySelectorAll(".pri:checked")].map(x => x.value); markDirty(); });
+  $("#savet").onclick = save;
+  $("#addwatch").onclick = () => { c.watchList.push({ name: "", ra: "", dec: "", cadenceDays: 1, priority: 0.7 }); markDirty(); renderTargets(); };
+  document.querySelectorAll("[data-rmwatch]").forEach(b => b.onclick = () => { c.watchList.splice(+b.dataset.rmwatch, 1); markDirty(); renderTargets(); });
+  document.querySelectorAll("[data-rmlist]").forEach(b => b.onclick = async () => { try { S.state = await api("/api/list/remove", { path: b.dataset.rmlist }); S.cfg = structuredClone(S.state.config); renderAll(); } catch (e) { toast(e.message, true); } });
+  $("#savekey").onclick = async () => { const k = $("#key").value.trim(); if (!k) { toast("Paste your key first.", true); return; } try { S.state = await api("/api/key", { key: k }); keepEdits(); toast("Key saved"); } catch (e) { toast(e.message, true); } };
+  const dk = $("#delkey"); if (dk) dk.onclick = async () => { try { S.state = await api("/api/key", { key: "" }); keepEdits(); toast("Key removed"); } catch (e) { toast(e.message, true); } };
+  $("#fetch").onclick = async () => {
+    if (S.dirty) { toast("Save your changes first.", true); return; }
+    $("#fetchmsg").textContent = "Downloading…";
+    try { const r = await api("/api/fetch", {}); S.state = r.state; S.cfg = structuredClone(S.state.config); renderAll(); toast(r.messages.join(" · ")); }
+    catch (e) { toast(e.message, true); $("#fetchmsg").textContent = ""; }
+  };
+  $("#csv").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (S.dirty) { toast("Save your changes first.", true); return; }
+    const text = await f.text();
+    try { const r = await api("/api/list", { name: f.name, text }); S.state = r.state; S.cfg = structuredClone(S.state.config); renderAll(); toast(r.messages[0] || "List added"); }
+    catch (err) { toast(err.message, true); }
+  };
+  if (S.dirty) document.querySelectorAll(".save").forEach(b => b.classList.add("dirty"));
+}
+function markDirty() { S.dirty = true; document.querySelectorAll(".save").forEach(b => b.classList.add("dirty")); }
+function keepEdits() { /* a key change saves settings on the server; keep the rest of the page in step */ const edits = S.cfg; S.cfg = structuredClone(S.state.config); if (S.dirty) { S.cfg.watchList = edits.watchList; } renderAll(); }
+
+/* ---------- Setup ---------- */
+function renderSetup() {
+  const st = S.state, c = S.cfg;
+  let h = "";
+  if (st.firstRun && !S.seenWelcome) h += `<div class="banner"><b>Welcome to StarCadence.</b> Enter your observatory's position and your filters, then press <b>Save changes</b>. Next, add targets on the <b>Targets</b> tab, and plan on the <b>Tonight</b> tab.</div>`;
+  if (!c) { $("#tab-setup").innerHTML = h + `<div class="banner err">Your settings file could not be read: ${esc(st.problem)}<br>File: <code>${esc(st.configPath)}</code></div>`; return; }
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  h += `<div class="card"><h2>Observatory</h2><div class="grid">
+    ${field("site.name", "Name")}
+    ${field("site.latitude", "Latitude (°)", { hint: "north positive" })}
+    ${field("site.longitude", "Longitude (°)", { hint: "EAST positive; west is negative" })}
+    ${field("site.elevationM", "Elevation (m)")}
+    ${field("site.timeZone", "Time zone", { kind: "opttext", hint: `e.g. America/New_York <a href="#" id="tz" style="color:var(--accent)">use ${esc(zone)}</a>` })}
+    ${field("site.minAltitude", "Lowest altitude (°)")}
+    ${field("site.sunAltitude", "Dark when the Sun is below", { kind: "num", select: [[-12, "-12° (nautical)"], [-15, "-15°"], [-18, "-18° (astronomical)"]] })}
+    ${field("site.moonSeparation", "Keep away from the Moon (°)")}
+    ${field("site.maxAirmass", "Highest airmass")}
+  </div></div>`;
+  h += `<div class="card"><h2>Filters and exposures</h2>
+    <p class="muted small" style="margin-top:0">For each filter: how many seconds a <b>12th-magnitude</b> star needs for a good, unsaturated measurement. Brighter and fainter stars are scaled from that; very faint stars get extra frames.</p>
+    <div style="overflow-x:auto"><table><thead><tr><th>Name in your filter wheel</th><th>AAVSO band</th><th>Seconds at mag 12</th><th>Shortest (s)</th><th>Longest (s)</th><th>Frames</th><th>Most frames</th><th>Colour vs V</th><th></th></tr></thead><tbody>
+    ${c.filters.map((f, i) => `<tr>
+      <td><input data-p="filters.${i}.name" value="${esc(f.name)}"></td>
+      <td><select data-p="filters.${i}.aavso">${BANDS.concat(BANDS.includes(f.aavso) ? [] : [f.aavso]).map(b => `<option ${b === f.aavso ? "selected" : ""}>${esc(b)}</option>`).join("")}</select></td>
+      <td><input type="number" step="any" data-t="num" data-p="filters.${i}.refExposure" value="${esc(f.refExposure)}"></td>
+      <td><input type="number" step="any" data-t="num" data-p="filters.${i}.minExposure" value="${esc(f.minExposure)}"></td>
+      <td><input type="number" step="any" data-t="num" data-p="filters.${i}.maxExposure" value="${esc(f.maxExposure)}"></td>
+      <td><input type="number" step="1" data-t="num" data-p="filters.${i}.count" value="${esc(f.count)}"></td>
+      <td><input type="number" step="1" data-t="num" data-p="filters.${i}.maxCount" value="${esc(f.maxCount)}"></td>
+      <td><input type="number" step="any" data-t="num" data-p="filters.${i}.colourOffset" value="${esc(f.colourOffset)}"></td>
+      <td><button class="b danger" data-rmfilter="${i}">✕</button></td></tr>`).join("")}
+    </tbody></table></div><div class="row" style="margin-top:10px"><button class="b" id="addfilter">Add a filter</button></div></div>`;
+  h += `<div class="card"><h2>Timing</h2><div class="grid">
+    ${field("overheads.slewAndCenterS", "Slew + plate-solve + settle (s)")}
+    ${field("overheads.filterChangeS", "Filter change (s)")}
+    ${field("overheads.readoutS", "Camera readout (s)")}
+    ${field("planner.transitBaselineMinutes", "Transit baseline (min each side)")}
+    ${field("planner.transitFilter", "Transit filter", { select: c.filters.map(f => [f.aavso, f.aavso + " (" + f.name + ")"]) })}
+    ${field("planner.defaultCadenceDays", "Default cadence (days)")}
+    ${field("planner.defaultSeriesMinutes", "Time-series length (min)")}
+    ${field("planner.maxTargets", "Most visits per night")}
+    ${field("planner.capForBrightLimit", "Shorten exposures so stars can't saturate if they flare", { type: "checkbox" })}
+  </div>
+  <details><summary>How targets are scored (advanced)</summary>
+    <p class="muted small">Each rule gives 0–1 and is multiplied by its weight; the highest total is observed next. 0 turns a rule off.</p>
+    <div class="grid">${(st.rules || []).map(r => `<label class="f">${esc(r.name)} <span class="hint">prefers ${esc(RULE_HELP[r.name] || "")}</span><input type="number" step="0.1" min="0" data-t="num" data-p="planner.ruleWeights.${esc(r.name)}" value="${esc(c.planner.ruleWeights[r.name] ?? r.weight)}"></label>`).join("")}</div>
+  </details>
+  <details><summary>KStars/Ekos export (advanced)</summary><div class="grid">
+    ${field("export.ekosSequenceDir", "Folder for the sequence files on the Ekos computer", { kind: "opttext", placeholder: "e.g. /home/astro/StarCadence/ekos" })}
+    ${field("export.ekosImageDir", "Image folder on the Ekos computer", { kind: "opttext" })}
+    ${field("export.ekosProfile", "Ekos profile")}
+  </div></details></div>`;
+  h += `<div class="card"><div class="row"><span class="muted small">Settings file: <code>${esc(st.configPath)}</code></span><div class="spacer"></div><button class="b primary save big" id="saves">Save changes</button></div></div>`;
+  $("#tab-setup").innerHTML = h;
+  $("#saves").onclick = async () => { S.seenWelcome = true; await save(); };
+  const tz = $("#tz"); if (tz) tz.onclick = ev => { ev.preventDefault(); S.cfg.site.timeZone = zone; markDirty(); renderSetup(); };
+  $("#addfilter").onclick = () => { c.filters.push({ name: "", aavso: "V", refMag: 12, refExposure: 30, minExposure: 1, maxExposure: 300, count: 1, maxCount: 6, colourOffset: 0, saturationHeadroom: 1 }); markDirty(); renderSetup(); };
+  document.querySelectorAll("[data-rmfilter]").forEach(b => b.onclick = () => { c.filters.splice(+b.dataset.rmfilter, 1); markDirty(); renderSetup(); });
+  if (S.dirty) document.querySelectorAll(".save").forEach(b => b.classList.add("dirty"));
+}
+
+function renderAll() {
+  $("#site").textContent = (S.state.config?.site?.name || "") + (S.state.version ? "  ·  v" + S.state.version : "");
+  renderTonight(); renderTargets(); renderSetup();
+}
+
+/* ---------- start ---------- */
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => tab(b.dataset.tab));
+$("#red").onclick = () => { document.body.classList.toggle("redmode"); try { localStorage.setItem("sc-red", document.body.classList.contains("redmode") ? "1" : ""); } catch (e) { } };
+try { if (localStorage.getItem("sc-red")) document.body.classList.add("redmode"); } catch (e) { }
+$("#quit").onclick = async () => {
+  if (S.dirty && !confirm("You have unsaved changes. Quit anyway?")) return;
+  try { await api("/api/quit", {}); } catch (e) { }
+  document.body.innerHTML = `<div class="empty" style="padding-top:20vh"><img src="/icon.svg" width="64" alt=""><h2>StarCadence has stopped.</h2><p>You can close this tab. Open StarCadence again to continue.</p></div>`;
+};
+window.addEventListener("beforeunload", e => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
+(async () => {
+  try {
+    S.state = await api("/api/state");
+    S.cfg = S.state.config ? structuredClone(S.state.config) : null;
+    renderAll();
+    if (S.state.firstRun || !S.cfg) tab("setup");
+  } catch (e) {
+    document.querySelector("main").innerHTML = `<div class="banner err">StarCadence is not answering: ${esc(e.message)}. Start it again.</div>`;
+  }
+  if (!window.SC_DEMO) setInterval(() => api("/api/heartbeat", {}).catch(() => { }), 20000);
+})();
+</script>
+</body>
+</html>

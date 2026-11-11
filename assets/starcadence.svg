@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>StarCadence</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#22306a"/>
+      <stop offset="1" stop-color="#070b1f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff4cf" stop-opacity="0.95"/>
+      <stop offset="0.3" stop-color="#ffd27a" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#ffd27a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="168" fill="none" stroke="#3a4a8c" stroke-width="12"/>
+  <path d="M 313.5 98.1 A 168 168 0 0 1 413.9 313.5" fill="none" stroke="#ffb547" stroke-width="26" stroke-linecap="round"/>
+  <g fill="#6fe3d4"><circle cx="299.5" cy="418.3" r="15"/><circle cx="137.2" cy="374.8" r="15"/><circle cx="93.7" cy="212.5" r="15"/><circle cx="212.5" cy="93.7" r="15"/></g>
+  <circle cx="256" cy="256" r="118" fill="url(#glow)"/>
+  <path d="M256 128 C267 228 284 245 384 256 C284 267 267 284 256 384 C245 284 228 267 128 256 C228 245 245 228 256 128 Z" fill="#fffaf0"/>
+</svg>

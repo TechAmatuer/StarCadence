@@ -3,8 +3,14 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>StarCadence.Cli</RootNamespace>
     <AssemblyName>starcadence</AssemblyName>
+    <Product>StarCadence</Product>
+    <ApplicationIcon>..\..\assets\starcadence.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The app window is a small local web page served by Kestrel (part of .NET, no extra packages). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\StarCadence.Core\StarCadence.Core.csproj" />
+    <EmbeddedResource Include="Gui\index.html" LogicalName="index.html" />
+    <EmbeddedResource Include="..\..\assets\starcadence.svg" LogicalName="icon.svg" />
   </ItemGroup>
 </Project>
