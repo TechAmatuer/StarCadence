@@ -21,7 +21,7 @@ foreach (var key in new[] { "MinimumApplicationVersion", "License", "LicenseURL"
 Check(Version.TryParse(meta.GetValueOrDefault("MinimumApplicationVersion"), out var minV) && minV >= new Version(3, 0), "minimum N.I.N.A. version 3.x");
 
 var catalog = new AssemblyCatalog(asm);
-var exports = catalog.Parts.SelectMany(p => p.ExportDefinitions.Select(e => (part: p.ToString(), contract: e.ContractName, meta: e.Metadata))).ToList();
+var exports = catalog.Parts.AsEnumerable().SelectMany(p => p.ExportDefinitions.Select(e => (part: p.ToString(), contract: e.ContractName, meta: e.Metadata))).ToList();
 foreach (var e in exports) Console.WriteLine($"      export {e.contract} <- {e.part}");
 Check(exports.Any(e => e.contract.EndsWith("IPluginManifest")), "exports IPluginManifest (the plug-in)");
 Check(exports.Any(e => e.contract.EndsWith("ISequenceItem") && e.part.Contains("StarCadenceNightContainer")), "exports ISequenceItem (StarCadence Night)");
