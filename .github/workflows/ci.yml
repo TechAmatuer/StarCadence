@@ -94,8 +94,8 @@ jobs:
           $dll = Resolve-Path src/StarCadence.Nina/bin/Release/net8.0-windows7.0/StarCadence.Nina.dll
           $tag = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF_NAME } else { 'latest' }
           & manifests/tools/CreateManifest.ps1 -file $dll -installerUrl "https://github.com/TechAmatuer/StarCadence/releases/download/$tag/StarCadence-nina-plugin.zip"
-          Get-ChildItem *.json | ForEach-Object { Write-Host "manifest: $($_.Name)"; Get-Content $_.FullName | Select-Object -First 30 }
-          Copy-Item (Get-ChildItem *.json | Select-Object -First 1).FullName manifest.json
+          if (-not (Test-Path manifest.json)) { throw "manifest.json was not written" }
+          Get-Content manifest.json | Select-Object -First 12
       - name: Validate the manifest against N.I.N.A.'s schema
         shell: bash
         run: |
