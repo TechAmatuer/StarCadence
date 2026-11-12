@@ -1,6 +1,8 @@
 # StarCadence
 
 [![build and test](https://github.com/TechAmatuer/StarCadence/actions/workflows/ci.yml/badge.svg)](https://github.com/TechAmatuer/StarCadence/actions/workflows/ci.yml)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/techamatuer)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/TechAmatuer)
 
 **StarCadence plans a whole night of variable-star and exoplanet-transit photometry for an automated observatory.
 It runs on Windows, macOS and Linux.**
@@ -304,7 +306,10 @@ machines. Please open an issue if something doesn't work.
 ## Support StarCadence
 
 StarCadence is free and open source, and stays that way. If it saves you time at the telescope, you can support its
-development. Donation links (Ko-fi for one-off tips by card or PayPal, and GitHub Sponsors) will appear here shortly.
+development:
+
+- **[Ko-fi](https://ko-fi.com/techamatuer)**: a one-off tip or monthly support by card or PayPal, no account needed.
+- **[GitHub Sponsors](https://github.com/sponsors/TechAmatuer)**: monthly or one-time, from your GitHub account.
 
 Telling other observers about it, starring the repository and [reporting problems](https://github.com/TechAmatuer/StarCadence/issues)
 help too.
