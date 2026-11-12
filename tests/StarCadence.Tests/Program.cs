@@ -788,8 +788,17 @@ static class RunnerTests {
             } else if (awake.Active) {
                 A.True(awake.Helper is { HasExited: false }, "systemd-inhibit is holding the lock");
             }
-            if (awake.Helper is { } helper) { awake.Dispose(); A.True(helper.HasExited, "helper ends when released"); }
+            if (awake.Helper is { } helper) {
+                var pid = helper.Id;
+                awake.Dispose();
+                A.True(!Alive(pid), "helper ends when released");
+            }
         }
+    }
+
+    static bool Alive(int pid) {
+        try { using var p = Process.GetProcessById(pid); return !p.HasExited; }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException) { return false; }
     }
 
     static string? Run(string exe, string args) {

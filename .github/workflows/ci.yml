@@ -246,5 +246,8 @@ jobs:
           TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           ls -la out
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "StarCadence $TAG" --notes "See the README for download and first-launch steps."
+          # Release notes from docs/releases/<tag>.md when there is one.
+          gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/docs/releases/$TAG.md?ref=$GITHUB_SHA" > notes.md 2>/dev/null && [ -s notes.md ] \
+            || echo "See the README for download and first-launch steps." > notes.md
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "StarCadence $TAG" --notes-file notes.md
           gh release upload "$TAG" out/* --repo "$GITHUB_REPOSITORY" --clobber
