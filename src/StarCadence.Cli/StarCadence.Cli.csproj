@@ -4,6 +4,9 @@
     <RootNamespace>StarCadence.Cli</RootNamespace>
     <AssemblyName>starcadence</AssemblyName>
     <Product>StarCadence</Product>
+    <AssemblyTitle>StarCadence</AssemblyTitle>
+    <Company>StarCadence contributors</Company>
+    <Copyright>MPL-2.0</Copyright>
     <ApplicationIcon>..\..\assets\starcadence.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>

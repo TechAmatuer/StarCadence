@@ -39,7 +39,12 @@ software and send the results.
 
 **First launch only.** StarCadence isn't signed with a paid Apple or Microsoft certificate, so each system asks once:
 - **Windows:** "Windows protected your PC" → **More info** → **Run anyway**. A small black window stays open while
-  StarCadence runs; close it to quit.
+  StarCadence runs; close it to quit (but keep it open while a night is running).
+  - If Windows says **Smart App Control** blocked it, there is no Run anyway button: Smart App Control blocks
+    unsigned programs it doesn't know, with no exceptions. The only way is to turn it off (Windows Security → App & browser control → Smart App
+    Control settings → Off); recent Windows updates let you turn it back on afterwards.
+  - If StarCadence says Windows would not let it write to Documents, **Controlled folder access** is on: allow
+    StarCadence.exe in Windows Security → Virus & threat protection → Ransomware protection.
 - **Mac:** if it says StarCadence "can't be opened", open **System Settings → Privacy & Security**, scroll down and
   click **Open Anyway** (or in Terminal: `xattr -dr com.apple.quarantine ~/Downloads/StarCadence`). StarCadence
   has no Dock icon; it runs in your browser. It may ask to use your Documents folder, where it keeps your settings
@@ -106,7 +111,7 @@ Not planned (3):
   only spectroscopy are skipped.
 - **ExoClock** transit planets, filtered by priority, brightness and depth.
 - **Any CSV list** with Name, RA and Dec columns, in any order. The column names used by the N.I.N.A. ExoPlanets
-  plug-in all work.
+  plug-in all work, and so do spreadsheets saved in decimal-comma languages (semicolon columns, `12,5`).
 - **Watch list** in the configuration, for stars you always want.
 - The same star from several lists or rows is merged into one target. It keeps the highest priority, the shortest
   cadence and every filter asked for.
@@ -151,12 +156,13 @@ Three ways, from least to most automatic:
 
 | Your setup | What to do | Plate solving, focus, guiding |
 |---|---|---|
-| **N.I.N.A.** (Windows) | Install the **StarCadence plug-in** (`StarCadence-nina-plugin.zip` from the release page; see its README) and add the **StarCadence Night** instruction to your sequence. It plans, slews, centres, exposes and re-plans inside N.I.N.A. | N.I.N.A.'s own: plate-solve centring on each target; put the instruction after your autofocus step and inside your safety loop. |
+| **N.I.N.A. 3.2 or newer** (Windows) | Install the **StarCadence plug-in** (`StarCadence-nina-plugin.zip` from the release page; see [its README](src/StarCadence.Nina/README-NINA.md)) and add the **StarCadence Night** instruction to your sequence. It plans, slews, centres, exposes and re-plans inside N.I.N.A. | N.I.N.A.'s own: plate-solve centring on each target; put the instruction after your autofocus step and inside your safety loop. |
 | **KStars/Ekos or any INDI server** (Mac, Linux, Windows, Raspberry Pi) | On the Tonight tab, **Run the night → Through an INDI server**, enter `host:port` (Ekos's INDI server is usually `localhost:7624`), press Start. Or `starcadence run --indi host:port`. | None yet: it slews, changes filters and exposes; focus first, and use a mount that points well. For plate-solve centring, export the Ekos files instead and let Ekos run them. |
 | **Rehearsal** (no hardware) | **Run the night → Simulation**, pick a speed, press Start. Or `starcadence run --simulate --from 2026-12-04T02:00:00Z --speed 600`. | Shows exactly what a night would do, in minutes. |
 
 During a run the window shows the phase, the current and next target, the exposure count and a live log; **Stop**
-finishes the current exposure and parks the mount. Each visit is written to `history.json` as it starts, so a
+finishes the current exposure and parks the mount. While a night runs, the computer is kept from going to sleep
+(the screen may still turn off). Each visit is written to `history.json` as it starts, so a
 re-plan (or tomorrow's plan) knows what has been done. Frames from an INDI run are saved under
 `images/<night>/` as FITS with `OBJECT`, `FILTER`, `RA` and `DEC` cards added.
 
@@ -254,15 +260,17 @@ Without a key, export a CSV from the Target Tool website and set `sources.target
   altitudes within 0.013°, Moon separation within 0.006°, Moon illumination within 0.002.
 - **Dark-time limits** fall where the Sun really is at the limit altitude (within 0.005°).
 - **Transit and minimum times** convert BJD/HJD to UTC within 6 seconds.
-- **43 automated tests** check the planner's rules (no overlaps, every block observable, windows kept, cadence
-  spacing), the sources and exporters, number formats under other locales, and the **night runner**: a whole night
-  against a fake observatory, transits started and stopped on time, failed targets retried later, unsafe weather
-  pausing the night, clean stops. GitHub Actions runs them on Windows, macOS (Apple Silicon) and Linux on every
-  change (badge at the top), starts the app window on all three, drives it in a real browser on Linux, and runs a
-  night through a **real INDI server** with simulated mount, filter wheel and camera, checking the saved FITS files.
+- **48 automated tests** check the planner's rules (no overlaps, every block observable, windows kept, cadence
+  spacing), the sources and exporters, and the **night runner**: a whole night against a fake observatory, transits
+  started and stopped on time, failed targets retried later, unsafe weather pausing the night, clean stops, a history
+  file that is locked or unwritable, and keeping the computer awake. GitHub Actions runs them on Windows, macOS (Apple
+  Silicon) and Linux on every change (badge at the top), and on Windows again under Portuguese, German, Thai and
+  Turkish number and date formats. It starts the packaged program's app window on all three systems, drives it in a
+  real browser on Linux, and runs a night through a **real INDI server** with simulated mount, filter wheel and
+  camera, checking the saved FITS files.
 - **The N.I.N.A. plug-in** is built on GitHub's Windows machines against N.I.N.A.'s plug-in library 3.2, checked the
-  way N.I.N.A.'s plug-in loader sees it (exports, metadata, templates), and its manifest is made with N.I.N.A.'s own
-  tool and validated against N.I.N.A.'s schema.
+  way N.I.N.A.'s plug-in loader sees it (exports, metadata, templates), packaged the way N.I.N.A.'s installer unpacks
+  plug-ins, and its manifest is made with N.I.N.A.'s own tool and validated against N.I.N.A.'s schema.
 - **The app window** only listens on this computer (127.0.0.1); every change needs a key that only its own page
   has, so other web pages can't use it.
 - **File formats**: Ekos files follow the KStars source; the Target Scheduler CSV is read back the way its importer
@@ -292,6 +300,14 @@ machines. Please open an issue if something doesn't work.
 | `src/StarCadence.Nina` | the N.I.N.A. plug-in (Windows only) |
 | `tests/` | the test suite, the browser test, the plug-in checks |
 | `examples/` | a sample configuration, target list and finished plan |
+
+## Support StarCadence
+
+StarCadence is free and open source, and stays that way. If it saves you time at the telescope, you can support its
+development. Donation links (Ko-fi for one-off tips by card or PayPal, and GitHub Sponsors) will appear here shortly.
+
+Telling other observers about it, starring the repository and [reporting problems](https://github.com/TechAmatuer/StarCadence/issues)
+help too.
 
 ## Licence and credits
 

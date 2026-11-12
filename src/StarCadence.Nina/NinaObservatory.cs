@@ -86,7 +86,11 @@ namespace StarCadence.Nina {
                 var slew = new SlewScopeToRaDec(telescopeMediator, guiderMediator) { Coordinates = new InputCoordinates(coords) };
                 item = slew;
             }
-            await RunItem(item, $"slew to {targetName}", ct);
+            try {
+                await RunItem(item, plateSolve ? $"centre on {targetName}" : $"slew to {targetName}", ct);
+            } catch (InvalidOperationException e) when (plateSolve) {
+                throw new InvalidOperationException(e.Message + ". If plate solving is not set up (Options > Plate Solving), untick \"Plate-solve centring\" in StarCadence Night.", e);
+            }
         }
 
         public async Task SetFilterAsync(string filterName, CancellationToken ct) {

@@ -12,8 +12,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("StarCadence contributors")]
 [assembly: AssemblyProduct("StarCadence")]
 [assembly: AssemblyCopyright("MPL-2.0")]
-[assembly: AssemblyVersion("0.3.0.0")]
-[assembly: AssemblyFileVersion("0.3.0.0")]
+[assembly: AssemblyVersion("0.3.1.0")]
+[assembly: AssemblyFileVersion("0.3.1.0")]
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.2.0.9001")]
 [assembly: AssemblyMetadata("License", "MPL-2.0")]
 [assembly: AssemblyMetadata("LicenseURL", "https://www.mozilla.org/en-US/MPL/2.0/")]
@@ -31,4 +31,6 @@ Add the **StarCadence Night** instruction to a sequence (after your usual unpark
 * records the visit, plans again, and goes on until dawn,
 * keeps transits and eclipse minima to their time windows and repeats stars on their cadence.
 
-Set up StarCadence first (double-click StarCadence.exe: observatory, filters, targets). The plug-in reads the same settings folder (Documents\StarCadence by default).")]
+Set up StarCadence first (double-click StarCadence.exe: observatory, filters, targets). The plug-in reads the same settings folder (Documents\StarCadence by default).
+
+StarCadence is free and open source. If it helps your observing, you can support it: https://github.com/TechAmatuer/StarCadence#support-starcadence")]

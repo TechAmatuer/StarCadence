@@ -107,22 +107,35 @@ sealed class RunService {
         _runner = new NightRunner(cfg, obs, clock, now => loader.LoadAll(now).SelectMany(r => r.Targets), histPath, L);
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
+        // A real night must not be cut short by the computer going to sleep.
+        var awake = req.Mode == "indi" ? KeepAwake.Start("StarCadence is running the night") : null;
+        if (awake is not null) L(awake.How);
+        var real = req.Mode == "indi";
+        Desktop.Title(real ? "StarCadence - running the night (keep this window open)" : "StarCadence - rehearsal running");
+        if (echo is null) Console.WriteLine(real
+            ? "A night is running. Keep this window open: closing it stops the run without parking the mount."
+            : "A rehearsal (simulation) is running.");
         _task = Task.Run(async () => {
             try { await _runner.RunAsync(token); }
             catch (Exception e) when (e is not OperationCanceledException) { lock (_lock) Error = e.Message; L("Run stopped with an error: " + e.Message); }
             finally {
                 if (_disposable is not null) { try { await _disposable.DisposeAsync(); } catch { } }
-                L($"Run ended: {_runner.Status.BlocksDone} targets done, {_runner.Status.ExposuresTaken} exposures.");
+                awake?.Dispose();
+                Desktop.Title("StarCadence");
+                var summary = $"Run ended: {_runner.Status.BlocksDone} targets done, {_runner.Status.ExposuresTaken} exposures.";
+                L(summary);
+                if (echo is null) Console.WriteLine(summary);
             }
         });
         if (blocking) await _task;
     }
 
-    public async Task StopAsync() {
+    /// <summary>Ask the run to stop after the current step (it then parks if set to) and wait up to <paramref name="wait"/> for it.</summary>
+    public async Task StopAsync(TimeSpan? wait = null) {
         var t = _task; var c = _cts;
         if (t is null || c is null) return;
         Log("Stop requested.");
         c.Cancel();
-        try { await Task.WhenAny(t, Task.Delay(TimeSpan.FromSeconds(30))); } catch { }
+        try { await Task.WhenAny(t, Task.Delay(wait ?? TimeSpan.FromSeconds(30))); } catch { }
     }
 }

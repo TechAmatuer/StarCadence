@@ -12,20 +12,14 @@ public sealed class History {
 
     public static History Load(string? path) {
         if (string.IsNullOrEmpty(path) || !File.Exists(path)) return new History();
-        var h = JsonSerializer.Deserialize<History>(File.ReadAllText(path), Config.Json) ?? new History();
+        var h = JsonSerializer.Deserialize<History>(Util.Files.ReadAllText(path), Config.Json) ?? new History();
         h.Visits = new Dictionary<string, List<DateTime>>(
             h.Visits.ToDictionary(kv => Target.NormaliseName(kv.Key), kv => kv.Value.Select(Astro.AstroTime.AsUtc).OrderBy(x => x).ToList()),
             StringComparer.OrdinalIgnoreCase);
         return h;
     }
 
-    public void Save(string path) {
-        var dir = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        var tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(this, Config.Json));
-        File.Move(tmp, path, overwrite: true);
-    }
+    public void Save(string path) => Util.Files.WriteAllText(path, JsonSerializer.Serialize(this, Config.Json));
 
     public void Record(string target, DateTime utc) {
         var key = Target.NormaliseName(target);

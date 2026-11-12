@@ -141,9 +141,16 @@ public static class PlanExport {
     static string X(string? s) => SecurityElement.Escape(s ?? "") ?? "";
     static string Iso(DateTime t) => AstroTime.AsUtc(t).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", Inv);
 
+    /// <summary>A file-name-safe version of a target or list name, valid on Windows, macOS and Linux alike.</summary>
     public static string Safe(string name) {
         var bad = Path.GetInvalidFileNameChars().Concat(new[] { ' ', '/', '\\', ':', '*', '?', '"', '<', '>', '|' }).ToHashSet();
-        var s = new string(name.Select(c => bad.Contains(c) ? '_' : c).ToArray()).Trim('_');
-        return s.Length == 0 ? "target" : s;
+        var s = new string(name.Select(c => bad.Contains(c) || char.IsControl(c) ? '_' : c).ToArray()).Trim('_').TrimEnd('.');   // Windows drops trailing dots
+        if (s.Length == 0) return "target";
+        if (WindowsDeviceNames.Contains(s.Split('.')[0])) s = "_" + s;   // CON, NUL, COM1... are devices on Windows, not files
+        return s;
     }
+
+    static readonly HashSet<string> WindowsDeviceNames = new(
+        new[] { "CON", "PRN", "AUX", "NUL" }.Concat(Enumerable.Range(1, 9).SelectMany(i => new[] { $"COM{i}", $"LPT{i}" })),
+        StringComparer.OrdinalIgnoreCase);
 }

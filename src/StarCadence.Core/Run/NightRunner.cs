@@ -63,6 +63,8 @@ public sealed class NightRunner {
         _planner = new Planner(cfg);
     }
 
+    readonly History _runVisits = new();   // visits made by this run, kept even if the history file cannot be written
+
     public RunnerStatus Status { get { lock (_lock) return _status.Copy(); } }
 
     void Set(RunnerPhase phase, string message, PlanBlock? current = null, PlanBlock? next = null) {
@@ -111,7 +113,7 @@ public sealed class NightRunner {
                 }
 
                 Set(RunnerPhase.Planning, "Planning the rest of the night...");
-                var history = History.Load(_historyPath);
+                var history = LoadHistory(now);
                 var usable = targets.Where(t => !(failedUntil.TryGetValue(t.Key, out var until) && until > now)).ToList();
                 var plan = _planner.Build(usable, history, night);
                 var block = plan.Blocks.FirstOrDefault(b => b.EndUtc > now);
@@ -155,6 +157,19 @@ public sealed class NightRunner {
         return Status.BlocksDone;
     }
 
+    /// <summary>The history file merged with this run's visits, so a file that cannot be read or saved for a moment
+    /// (another program holding it, a sync client) never makes the cadence forget a target observed tonight.</summary>
+    History LoadHistory(DateTime now) {
+        History h;
+        try { h = History.Load(_historyPath); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) {
+            _log($"{now:HH:mm:ss} could not read {Path.GetFileName(_historyPath)} ({e.Message}); using tonight's visits.");
+            h = new History();
+        }
+        foreach (var (name, times) in _runVisits.Visits) foreach (var t in times) h.Record(name, t);
+        return h;
+    }
+
     async Task<bool> RunBlock(PlanBlock b, PlanBlock? next, Target? previous, History history, CancellationToken ct) {
         var timed = b.Fixed || b.Kind == TargetKind.Series;
         Set(RunnerPhase.Slewing, $"{b.Target}: slewing ({b.Kind}{(b.Window is null ? "" : ", " + b.Window)})", b, next);
@@ -163,7 +178,11 @@ public sealed class NightRunner {
         // Record the visit as soon as exposures begin, so a crash mid-block still counts for the cadence.
         var started = _clock.UtcNow;
         history.Record(b.Target, started);
-        history.Save(_historyPath);
+        _runVisits.Record(b.Target, started);
+        try { history.Save(_historyPath); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) {
+            _log($"{started:HH:mm:ss} could not save {Path.GetFileName(_historyPath)} ({e.Message}); the visit is kept and saved with the next one.");
+        }
 
         var reps = b.Steps.Count == 0 ? 0 : b.Steps.Max(s => s.Count);
         var taken = 0;

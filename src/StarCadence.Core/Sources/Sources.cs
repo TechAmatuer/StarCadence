@@ -51,7 +51,7 @@ public static class TargetTool {
         if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
         if (!string.IsNullOrWhiteSpace(s.TargetToolKeyFile)) {
             var p = Path.IsPathRooted(s.TargetToolKeyFile) ? s.TargetToolKeyFile : Path.Combine(configDir, s.TargetToolKeyFile);
-            if (File.Exists(p)) return File.ReadAllText(p).Trim();
+            if (File.Exists(p)) return Util.Files.ReadAllText(p).Trim();
         }
         return null;
     }
@@ -220,14 +220,14 @@ public sealed class SourceLoader {
         else {
             try {
                 var json = await TargetTool.FetchAsync(_http, key, _cfg.Sources.TargetToolSections, ct).ConfigureAwait(false);
-                await File.WriteAllTextAsync(CachePath("targettool.json"), json, ct).ConfigureAwait(false);
+                Util.Files.WriteAllText(CachePath("targettool.json"), json);
                 log.Add($"AAVSO Target Tool: saved {CachePath("targettool.json")}");
             } catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { log.Add("AAVSO Target Tool: download failed: " + e.Message); }
         }
         if (_cfg.Sources.ExoClock) {
             try {
                 var json = await _http.GetStringAsync(ExoClock.Url, ct).ConfigureAwait(false);
-                await File.WriteAllTextAsync(CachePath("exoclock.json"), json, ct).ConfigureAwait(false);
+                Util.Files.WriteAllText(CachePath("exoclock.json"), json);
                 log.Add($"ExoClock: saved {CachePath("exoclock.json")}");
             } catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { log.Add("ExoClock: download failed: " + e.Message); }
         }
@@ -241,13 +241,13 @@ public sealed class SourceLoader {
         foreach (var f in s.CsvFiles) results.Add(SafeCsv(Resolve(f), null));
         var ttCache = CachePath("targettool.json");
         if (File.Exists(ttCache)) {
-            var r = Safe("AAVSO Target Tool", ttCache, () => TargetTool.ParseJson(File.ReadAllText(ttCache)));
+            var r = Safe("AAVSO Target Tool", ttCache, () => TargetTool.ParseJson(Util.Files.ReadAllText(ttCache)));
             r.Messages.Add($"(from {Path.GetFileName(ttCache)}, downloaded {File.GetLastWriteTimeUtc(ttCache):yyyy-MM-dd HH:mm} UTC)");
             results.Add(r);
         } else if (!string.IsNullOrWhiteSpace(s.TargetToolCsv)) results.Add(SafeCsv(Resolve(s.TargetToolCsv), "AAVSO Target Tool export"));
         if (s.ExoClock) {
             var file = !string.IsNullOrWhiteSpace(s.ExoClockFile) ? Resolve(s.ExoClockFile) : CachePath("exoclock.json");
-            results.Add(File.Exists(file) ? Safe("ExoClock", file, () => ExoClock.ParseJson(File.ReadAllText(file), s, nightUtc))
+            results.Add(File.Exists(file) ? Safe("ExoClock", file, () => ExoClock.ParseJson(Util.Files.ReadAllText(file), s, nightUtc))
                 : new SourceResult("ExoClock", new(), new() { $"ExoClock: no data yet ({file}); run 'fetch' or set sources.exoClockFile" }));
         }
         return results;

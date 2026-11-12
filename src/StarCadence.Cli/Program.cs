@@ -13,10 +13,16 @@ CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
+Desktop.Prepare();
 var a = new Args(args);
+if (a.Command == "app") {
+    // Usually double-clicked: whatever goes wrong must stay on screen long enough to read.
+    var dataDir = a.Get("data") ?? AppServer.DefaultDataDir();
+    try { return await AppServer.Run(dataDir, int.TryParse(a.Get("port"), out var port) ? port : AppServer.PreferredPort, !a.Has("no-browser"), a.Has("stay")); }
+    catch (Exception e) { return Desktop.StartupFailed(e, dataDir); }
+}
 try {
     return a.Command switch {
-        "app" => await AppServer.Run(a.Get("data") ?? AppServer.DefaultDataDir(), int.TryParse(a.Get("port"), out var port) ? port : AppServer.PreferredPort, !a.Has("no-browser"), a.Has("stay")),
         "init" => Commands.Init(a),
         "fetch" => await Commands.Fetch(a),
         "plan" => await Commands.Plan(a),
@@ -39,6 +45,7 @@ sealed class Args {
     readonly HashSet<string> _flags = new(StringComparer.OrdinalIgnoreCase);
 
     public Args(string[] argv) {
+        argv = argv.Where(x => !x.StartsWith("-psn_", StringComparison.Ordinal)).ToArray();   // older macOS adds this when an app is opened from Finder
         Command = argv.Length > 0 ? argv[0].ToLowerInvariant() : "app";   // double-clicked: open the app window
         for (var i = 1; i < argv.Length; i++) {
             var k = argv[i];

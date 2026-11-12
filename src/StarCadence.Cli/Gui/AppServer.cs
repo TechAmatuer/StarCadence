@@ -231,6 +231,11 @@ static class AppServer {
             });
         }
         await app.WaitForShutdownAsync();
+        if (runs.Running) {
+            // Ctrl+C or the system shutting the program down during a night: finish the current step and park first.
+            Console.WriteLine("Stopping the night run (finishing the current step, then parking)...");
+            await runs.StopAsync(TimeSpan.FromMinutes(3));
+        }
         Console.WriteLine("StarCadence stopped.");
         return 0;
     }

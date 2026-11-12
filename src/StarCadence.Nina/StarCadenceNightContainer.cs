@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.Composition;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -188,11 +189,14 @@ namespace StarCadence.Nina {
                 windowServiceFactory, safetyMonitorMediator, PlateSolve, ParkAtEnd);
             var runsDir = Path.Combine(DataFolder, "runs");
             Directory.CreateDirectory(runsDir);
-            var logFile = Path.Combine(runsDir, $"nina-{DateTime.UtcNow:yyyyMMdd-HHmmss}.log");
+            var logFile = Path.Combine(runsDir, "nina-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".log");
             void Log(string line) {
                 Logger.Info("StarCadence: " + line);
-                try { File.AppendAllText(logFile, line + Environment.NewLine); } catch (IOException) { }
+                try { File.AppendAllText(logFile, line + Environment.NewLine); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             }
+            // The PC must not go to sleep in the middle of the night (N.I.N.A. may do this too; asking twice is harmless).
+            using var awake = KeepAwake.Start("N.I.N.A. is running a StarCadence night");
+            Log(awake.How);
             var runner = new NightRunner(cfg, observatory, new SystemClock(), now => loader.LoadAll(now).SelectMany(r => r.Targets), historyPath, Log,
                 new RunnerOptions { WaitForDark = true });
             runner.StatusChanged += st => {

@@ -46,6 +46,8 @@
   button.big { padding: 11px 22px; font-size: 16px; }
   button.danger { color: var(--danger); }
   button:disabled { opacity: .5; cursor: default; }
+  a.b { display: inline-block; text-decoration: none; line-height: normal; }
+  a.support { color: var(--accent2); }
   a.dl { display: inline-flex; align-items: center; gap: 6px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; text-decoration: none; font-size: 14px; }
   a.dl:hover { border-color: var(--accent); }
   a.dl small { color: var(--muted); }
@@ -85,6 +87,8 @@
     <button data-tab="setup">Setup</button>
   </nav>
   <div class="spacer"></div>
+  <a class="b support" id="support" href="https://github.com/TechAmatuer/StarCadence#support-starcadence" target="_blank" rel="noopener"
+     title="StarCadence is free and open source. Donations (Ko-fi or GitHub Sponsors) help keep it going.">&#9829; Support</a>
   <button class="b" id="red" title="Red light for use at the telescope">Night mode</button>
   <button class="b" id="quit" title="Stop StarCadence">Quit</button>
 </header>

@@ -29,12 +29,12 @@ public sealed class Config {
     };
 
     public static Config Load(string path) {
-        var cfg = JsonSerializer.Deserialize<Config>(File.ReadAllText(path), Json) ?? throw new InvalidDataException("Empty configuration file.");
+        var cfg = JsonSerializer.Deserialize<Config>(Util.Files.ReadAllText(path), Json) ?? throw new InvalidDataException("Empty configuration file.");
         cfg.Validate();
         return cfg;
     }
 
-    public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
+    public void Save(string path) => Util.Files.WriteAllText(path, JsonSerializer.Serialize(this, Json));
 
     public void Validate() {
         var errors = new List<string>();

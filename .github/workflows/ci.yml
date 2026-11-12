@@ -29,6 +29,13 @@ jobs:
         run: dotnet build -c Release
       - name: Tests
         run: dotnet run --project tests/StarCadence.Tests -c Release --no-build
+      - name: Tests under other languages' number and date formats (decimal comma, Thai calendar, Turkish i)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          for culture in pt-PT de-DE th-TH tr-TR; do
+            STARCADENCE_TEST_CULTURE=$culture dotnet run --project tests/StarCadence.Tests -c Release --no-build | tail -1
+          done
       - name: Plan the example night (command line)
         shell: bash
         run: |
@@ -87,36 +94,43 @@ jobs:
         run: dotnet build src/StarCadence.Nina -c Release
       - name: Check it the way N.I.N.A.'s plug-in loader will (exports, metadata, templates)
         run: dotnet run --project tests/StarCadence.Nina.Tests -c Release
-      - name: Make the plug-in manifest with N.I.N.A.'s own tool
+      - name: Package the plug-in and make its manifest with N.I.N.A.'s own tool
         shell: pwsh
         run: |
           git clone --depth 1 https://github.com/isbeorn/nina.plugin.manifests manifests
-          $dll = Resolve-Path src/StarCadence.Nina/bin/Release/net8.0-windows7.0/StarCadence.Nina.dll
+          # Only our two files: N.I.N.A. provides everything else. They sit at the top of the zip, which is how
+          # N.I.N.A.'s installer unpacks an archive plug-in (into Plugins\3.0.0\<name>\).
+          $stage = New-Item -ItemType Directory -Force stage/StarCadence
+          $out = "src/StarCadence.Nina/bin/Release/net8.0-windows7.0"
+          Copy-Item "$out/StarCadence.Nina.dll", "$out/StarCadence.Core.dll" $stage
+          Copy-Item src/StarCadence.Nina/README-NINA.md (Join-Path $stage README.md)
           $tag = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF_NAME } else { 'latest' }
-          & manifests/tools/CreateManifest.ps1 -file $dll -installerUrl "https://github.com/TechAmatuer/StarCadence/releases/download/$tag/StarCadence-nina-plugin.zip"
+          & manifests/tools/CreateManifest.ps1 -file (Join-Path $stage StarCadence.Nina.dll) -createArchive -includeAll -archiveName StarCadence-nina-plugin `
+            -installerUrl "https://github.com/TechAmatuer/StarCadence/releases/download/$tag/StarCadence-nina-plugin.zip"
           if (-not (Test-Path manifest.json)) { throw "manifest.json was not written" }
-          Get-Content manifest.json | Select-Object -First 12
+          $m = Get-Content manifest.json -Raw | ConvertFrom-Json
+          $hash = (Get-FileHash StarCadence-nina-plugin.zip -Algorithm SHA256).Hash
+          if ($m.Installer.Type -ne 'ARCHIVE' -or $m.Installer.Checksum -ne $hash) { throw "manifest does not describe the zip: $($m.Installer | ConvertTo-Json)" }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $names = [IO.Compression.ZipFile]::OpenRead((Resolve-Path StarCadence-nina-plugin.zip)).Entries.FullName
+          "zip: $($names -join ', ')"
+          if (-not ($names -contains 'StarCadence.Nina.dll' -and $names -contains 'StarCadence.Core.dll')) { throw "the plug-in files must be at the top of the zip" }
+          "manifest: $($m.Name) $($m.Version.Major).$($m.Version.Minor).$($m.Version.Patch) $($m.Installer.Type) $($m.Installer.URL)"
+          Copy-Item manifest.json StarCadence-nina-manifest.json
       - name: Validate the manifest against N.I.N.A.'s schema
         shell: bash
         run: |
           cd manifests && npm install --silent > /dev/null 2>&1 || npm install
           node -e "
             const Ajv=require('ajv'); const addFormats=require('ajv-formats'); const ajv=new Ajv(); addFormats(ajv);
-            const v=ajv.compile(require('./manifest.schema.json')); const m=JSON.parse(require('fs').readFileSync('../manifest.json','utf8').replace(/^﻿/,''));
+            const v=ajv.compile(require('./manifest.schema.json')); const m=JSON.parse(require('fs').readFileSync('../manifest.json','utf8').replace(/^\uFEFF/,''));
             if(!v(m)){ console.error(JSON.stringify(v.errors,null,1)); process.exit(1);} console.log('manifest is valid: '+m.Name+' '+Object.values(m.Version).join('.'));"
-      - name: Package the plug-in (only our two files; N.I.N.A. provides the rest)
-        shell: bash
-        run: |
-          out=src/StarCadence.Nina/bin/Release/net8.0-windows7.0
-          mkdir -p pkg/StarCadence
-          cp "$out/StarCadence.Nina.dll" "$out/StarCadence.Core.dll" pkg/StarCadence/
-          cp src/StarCadence.Nina/README-NINA.md pkg/StarCadence/README.md
-          cp manifest.json pkg/StarCadence/manifest.json
-          cd pkg && 7z a -tzip ../StarCadence-nina-plugin.zip StarCadence > /dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: StarCadence-nina-plugin
-          path: StarCadence-nina-plugin.zip
+          path: |
+            StarCadence-nina-plugin.zip
+            StarCadence-nina-manifest.json
 
   package:
     name: package (${{ matrix.name }})
@@ -140,6 +154,31 @@ jobs:
         run: |
           dist/bin/starcadence version
           dist/bin/starcadence plan --config examples/config.json --date 2026-12-03 --out smoke --formats txt
+      - name: Open the packaged app window and use it (as a double-click would, minus the browser)
+        shell: bash
+        run: |
+          mkdir -p smoke-app && cp examples/config.json examples/sample-targets.csv examples/sample-exoclock.json smoke-app/
+          dist/bin/starcadence app --data smoke-app --port 8797 --no-browser > app.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8797/api/ping && break; sleep 1; done; echo
+          curl -sf http://127.0.0.1:8797/ > page.html
+          grep -q 'id="support"' page.html
+          TOKEN=$(grep -o '[0-9A-F]\{32\}' page.html | head -1)
+          curl -sf -H "X-StarCadence: $TOKEN" -H 'Content-Type: application/json' -X POST http://127.0.0.1:8797/api/plan -d '{"date":"2026-12-03"}' | grep -q '"blocks"'
+          curl -sf -H "X-StarCadence: $TOKEN" -H 'Content-Type: application/json' -X POST http://127.0.0.1:8797/api/run/start -d '{"mode":"simulate","speed":600}' > /dev/null
+          sleep 5
+          curl -sf http://127.0.0.1:8797/api/run/status | grep -q '"running": true'
+          curl -sf -H "X-StarCadence: $TOKEN" -X POST http://127.0.0.1:8797/api/run/stop > /dev/null
+          curl -sf -H "X-StarCadence: $TOKEN" -X POST http://127.0.0.1:8797/api/quit
+          sleep 3; cat app.log
+          grep -q "StarCadence stopped" app.log
+      - name: Windows file details (what Explorer and Task Manager show)
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          $v = (Get-Item dist/bin/starcadence.exe).VersionInfo
+          "$($v.ProductName) | $($v.FileDescription) | $($v.FileVersion) | $($v.CompanyName)"
+          $want = (Select-Xml -Path Directory.Build.props -XPath '//Version').Node.InnerText
+          if ($v.ProductName -ne 'StarCadence' -or $v.FileDescription -ne 'StarCadence' -or -not "$($v.FileVersion)".StartsWith($want)) { "::warning::StarCadence.exe file details are not as expected (version $want)" }
       - name: Windows folder
         if: matrix.name == 'windows'
         shell: bash

@@ -27,6 +27,11 @@ static class A {
 
 static class Program {
     static int Main(string[] args) {
+        // Run everything under another locale (decimal comma, Thai calendar, Turkish i...) the way N.I.N.A. would on that PC.
+        if (Environment.GetEnvironmentVariable("STARCADENCE_TEST_CULTURE") is { Length: > 0 } culture) {
+            CultureInfo.DefaultThreadCurrentCulture = CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Console.WriteLine($"Locale: {CultureInfo.CurrentCulture.Name} ({CultureInfo.CurrentCulture.Calendar.GetType().Name}, decimal '{CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator}')");
+        }
         var filter = args.FirstOrDefault();
         var tests = typeof(Program).Assembly.GetTypes().SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
             .Where(m => m.GetCustomAttribute<TestAttribute>() is not null && (filter is null || m.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) || m.DeclaringType!.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)))
@@ -403,6 +408,37 @@ static class SourceTests {
         } finally { Directory.Delete(dir, true); }
     }
 
+    [Test] static void SpreadsheetCsvFromDecimalCommaLanguages() {
+        // Excel in Germany, Portugal, Brazil... saves "CSV" with semicolons and decimal commas; some tools add a "sep=" line or use tabs.
+        var dir = Path.Combine(Path.GetTempPath(), "sc-semi-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try {
+            var expectRa = (21 + 42 / 60.0 + 42.8 / 3600) * 15;
+            foreach (var (file, text) in new[] {
+                ("semicolon.csv", "Name;RA;Dec;Mag;Filters\r\nSS Cyg;21 42 42,8;+43 35 09,9;12,1;B,V\r\n\"Nova; test\";1,5;-2,25;<14,8;V\r\n"),
+                ("sep-line.csv", "sep=;\nName;RA;Dec;Mag;Filters\nSS Cyg;21:42:42,8;+43:35:09,9;12,1;B,V\n\"Nova; test\";1,5;-2,25;<14,8;V\n"),
+                ("tabs.txt", "Name\tRA\tDec\tMag\tFilters\nSS Cyg\t21 42 42,8\t+43 35 09,9\t12,1\tB,V\n\"Nova; test\"\t1,5\t-2,25\t<14,8\tV\n"),
+            }) {
+                var f = Path.Combine(dir, file);
+                File.WriteAllText(f, text);
+                var r = CsvTargets.Load(f);
+                A.Eq(r.Targets.Count, 2, file + ": both rows");
+                var ss = r.Targets[0];
+                A.Near(ss.RaDeg, expectRa, 1e-6, file + ": RA with a decimal comma");
+                A.Near(ss.DecDeg, 43 + 35 / 60.0 + 9.9 / 3600, 1e-6, file + ": Dec with a decimal comma");
+                A.Eq(ss.Mag, 12.1, file + ": magnitude 12,1");
+                A.True(ss.WantFilters.SequenceEqual(new[] { "B", "V" }), file + ": filter list B,V is not a number");
+                A.Eq(r.Targets[1].Name, "Nova; test", file + ": quoted separator in a name");
+                A.Near(r.Targets[1].DecDeg, -2.25, 1e-9, file + ": decimal degrees -2,25");
+            }
+            // An ordinary comma file is untouched: "12,5" there is two columns, as before.
+            var plain = Path.Combine(dir, "plain.csv");
+            File.WriteAllText(plain, "Name,RA,Dec,Mag\nStar,10.5,20.25,11.5\n");
+            var pr = CsvTargets.Load(plain);
+            A.True(pr.Targets.Count == 1 && pr.Targets[0].Mag == 11.5 && Math.Abs(pr.Targets[0].DecDeg - 20.25) < 1e-9, "comma CSV unchanged");
+        } finally { Directory.Delete(dir, true); }
+    }
+
     [Test] static void TargetToolJson() {
         var r = TargetTool.ParseJson(File.ReadAllText(Fx.Path("targettool.json")));
         A.Eq(r.Targets.Count, 3, "two SS Cyg rows + R CrB (spectroscopy, conjunction and no-coordinate rows dropped)");
@@ -519,6 +555,37 @@ static class ExportTests {
             A.True(ts.All(r => r.ContainsKey("type") && r.ContainsKey("name") && r["ra"].Count(ch => ch == ':') == 2 && r["dec"].Count(ch => ch == ':') == 2 && r["roi"] == "100"), "Target Scheduler columns and formats");
             A.True(ts.All(r => Math.Abs(Coords.ParseRa(r["ra"])!.Value - plan.Blocks.First(b => b.Target == r["name"]).RaDeg) < 0.0001), "RA survives the round trip");
         } finally { CultureInfo.CurrentCulture = old; }
+    }
+
+    [Test] static void FileNamesAreSafeOnWindows() {
+        A.Eq(PlanExport.Safe("CON"), "_CON", "device name");
+        A.Eq(PlanExport.Safe("nul.csv"), "_nul.csv", "device name with an extension");
+        A.Eq(PlanExport.Safe("COM1"), "_COM1", "serial port name");
+        A.Eq(PlanExport.Safe("Comet 12P"), "Comet_12P", "ordinary name");
+        A.Eq(PlanExport.Safe("R Leo."), "R_Leo", "trailing dot (Windows drops it)");
+        A.Eq(PlanExport.Safe("TIC 1234:01 / b?"), "TIC_1234_01___b", "characters Windows forbids");
+        A.Eq(PlanExport.Safe(" ..  "), "target", "nothing left");
+    }
+
+    [Test] static void SavingCopesWithAFileHeldOpen() {
+        // OneDrive, antivirus or the app window can hold history.json open for a moment; on Windows a plain
+        // replace then fails. The save must wait for it instead of losing the visit.
+        var dir = Path.Combine(Path.GetTempPath(), "sc-lock-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try {
+            var path = Path.Combine(dir, "history.json");
+            var h = new History(); h.Record("AB And", new DateTime(2026, 12, 3, 23, 0, 0, DateTimeKind.Utc)); h.Save(path);
+            var holder = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);   // no delete or write sharing, like a reader that locks
+            var release = Task.Run(async () => { await Task.Delay(400); holder.Dispose(); });
+            h.Record("SS Cyg", new DateTime(2026, 12, 4, 1, 0, 0, DateTimeKind.Utc));
+            h.Save(path);
+            release.GetAwaiter().GetResult();
+            var back = History.Load(path);
+            A.True(back.Last("SS Cyg") is not null && back.Last("AB And") is not null, "both visits saved once the file was free");
+            A.True(!Directory.GetFiles(dir, "*.tmp").Any(), "no temporary files left behind");
+            // Reading while another program has it open for writing works too.
+            using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite)) A.True(History.Load(path).Visits.Count == 2, "read while open elsewhere");
+        } finally { Directory.Delete(dir, true); }
     }
 
     [Test] static void HistoryRoundTrip() {
@@ -675,6 +742,63 @@ static class RunnerTests {
         A.True(obs.Finished, "observatory finished (parked) on stop");
         A.Eq(runner.Status.BlocksDone, 3, "stopped after three blocks");
         File.Delete(hist);
+    }
+
+    [Test] static void HistoryFileProblemsDoNotStopTheNight() {
+        var c = Fx.Cfg();
+        var n = Fx.Night(c);
+        var targets = Enumerable.Range(0, 12).Select(i => Fx.Star($"S{i}", 20 + i * 20, 25 + i, 11)).ToList();
+        var dir = Path.Combine(Path.GetTempPath(), "sc-hist-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);   // the "history file" is a folder: every read and write of it fails
+        var old = StarCadence.Core.Util.Files.RetryStep;
+        StarCadence.Core.Util.Files.RetryStep = TimeSpan.FromMilliseconds(1);
+        try {
+            var clock = new TestClock(n.StartUtc.AddMinutes(5));
+            var obs = new FakeObservatory(clock);
+            var log = new List<string>();
+            var runner = new StarCadence.Core.Run.NightRunner(c, obs, clock, _ => targets, dir, log.Add,
+                new StarCadence.Core.Run.RunnerOptions { EndMargin = n.EndUtc - n.StartUtc - TimeSpan.FromHours(3) });
+            var done = runner.RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+            // the same night with a normal history file, for comparison
+            var clock2 = new TestClock(n.StartUtc.AddMinutes(5)); var obs2 = new FakeObservatory(clock2);
+            var normal = Path.Combine(dir + "-ok.json");
+            var done2 = new StarCadence.Core.Run.NightRunner(c, obs2, clock2, _ => targets, normal, _ => { },
+                new StarCadence.Core.Run.RunnerOptions { EndMargin = n.EndUtc - n.StartUtc - TimeSpan.FromHours(3) }).RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+            File.Delete(normal);
+            A.True(done >= 3 && done == done2, $"kept observing as if nothing were wrong ({done} targets, {done2} with a working file)");
+            A.True(log.Any(l => l.Contains("could not save")), "said the history could not be saved");
+            var slews = obs.Actions.Where(a => a.StartsWith("slew")).ToList();
+            A.Eq(slews.Count, slews.Distinct().Count(), "no target observed twice although nothing reached the file");
+        } finally { StarCadence.Core.Util.Files.RetryStep = old; Directory.Delete(dir, true); }
+    }
+
+    [Test] static void KeepAwakeHoldsAndReleases() {
+        using (var awake = StarCadence.Core.Run.KeepAwake.Start("StarCadence test")) {
+            Console.WriteLine("      " + awake.How);
+            if (OperatingSystem.IsWindows()) {
+                A.True(awake.Active, "Windows accepted the request");
+                var requests = Run("powercfg", "/requests");
+                var me = Process.GetCurrentProcess().ProcessName;
+                if (requests is null || requests.Contains("administrator", StringComparison.OrdinalIgnoreCase)) Console.WriteLine("      (powercfg needs administrator rights here; not checked)");
+                else A.True(requests.Contains(me, StringComparison.OrdinalIgnoreCase), $"powercfg /requests lists {me}:\n{requests}");
+            } else if (OperatingSystem.IsMacOS()) {
+                A.True(awake.Active && awake.Helper is { HasExited: false }, "caffeinate is running");
+                var assertions = Run("pmset", "-g assertions") ?? "";
+                A.True(assertions.Contains("caffeinate", StringComparison.OrdinalIgnoreCase), "pmset shows the caffeinate assertion");
+            } else if (awake.Active) {
+                A.True(awake.Helper is { HasExited: false }, "systemd-inhibit is holding the lock");
+            }
+            if (awake.Helper is { } helper) { awake.Dispose(); A.True(helper.HasExited, "helper ends when released"); }
+        }
+    }
+
+    static string? Run(string exe, string args) {
+        try {
+            var p = Process.Start(new ProcessStartInfo(exe, args) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false })!;
+            var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+            p.WaitForExit(10000);
+            return output;
+        } catch (Exception) { return null; }
     }
 
     [Test] static void ScaledClockRunsFast() {
