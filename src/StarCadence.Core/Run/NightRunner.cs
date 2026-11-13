@@ -95,6 +95,7 @@ public sealed class NightRunner {
                 if (now < night.StartUtc) {
                     if (!_opt.WaitForDark) { Set(RunnerPhase.Finished, $"It is daylight; the night starts at {night.StartUtc:HH:mm} UTC."); break; }
                     Set(RunnerPhase.WaitingForDark, $"Waiting for dark ({night.StartUtc:HH:mm} UTC).");
+                    await BeginWait(night.StartUtc - now, ct);
                     await _clock.Delay(night.StartUtc - now, ct);
                     continue;
                 }
@@ -120,6 +121,7 @@ public sealed class NightRunner {
                 if (block is null) {
                     var wait = stopAt - now < _opt.IdleWait ? stopAt - now : _opt.IdleWait;
                     Set(RunnerPhase.Idle, $"Nothing to observe right now; checking again in {wait.TotalMinutes:0} min.");
+                    await BeginWait(wait, ct);
                     await _clock.Delay(wait, ct);
                     continue;
                 }
@@ -127,12 +129,14 @@ public sealed class NightRunner {
                 if (block.StartUtc > now.AddSeconds(2)) {
                     Set(RunnerPhase.WaitingForWindow, $"Next: {block.Target} at {block.StartUtc:HH:mm} UTC ({block.Window ?? block.Kind.ToString()}); waiting.", block, next);
                     var wait = block.StartUtc - now;
+                    await BeginWait(wait, ct);
                     if (wait > _opt.IdleWait) wait = _opt.IdleWait;   // re-plan on the way, in case something changes
                     await _clock.Delay(wait, ct);
                     continue;
                 }
 
                 // Run the block.
+                _waiting = false;
                 BlockStarted?.Invoke(block);
                 var ok = false;
                 try {
@@ -170,10 +174,31 @@ public sealed class NightRunner {
         return h;
     }
 
+    bool _waiting;
+
+    /// <summary>Tell the observatory once that a wait is starting (it stops tracking or parks), not on every re-check.</summary>
+    async Task BeginWait(TimeSpan duration, CancellationToken ct) {
+        if (_waiting) return;
+        _waiting = true;
+        try { await _obs.WaitingAsync(duration, ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { _log($"{_clock.UtcNow:HH:mm:ss} could not prepare the mount for the wait: {e.Message}"); }
+    }
+
     async Task<bool> RunBlock(PlanBlock b, PlanBlock? next, Target? previous, History history, CancellationToken ct) {
-        var timed = b.Fixed || b.Kind == TargetKind.Series;
         Set(RunnerPhase.Slewing, $"{b.Target}: slewing ({b.Kind}{(b.Window is null ? "" : ", " + b.Window)})", b, next);
         await _obs.SlewAsync(b.RaDeg, b.DecDeg, b.Target, ct);
+        await _obs.TargetReadyAsync(b.Target, ct);
+        var ok = false;
+        try {
+            ok = await ExposeBlock(b, next, history, ct);
+            return ok;
+        } finally {
+            if (!ct.IsCancellationRequested) await _obs.TargetDoneAsync(b.Target, ok, ct);
+        }
+    }
+
+    async Task<bool> ExposeBlock(PlanBlock b, PlanBlock? next, History history, CancellationToken ct) {
+        var timed = b.Fixed || b.Kind == TargetKind.Series;
 
         // Record the visit as soon as exposures begin, so a crash mid-block still counts for the cadence.
         var started = _clock.UtcNow;

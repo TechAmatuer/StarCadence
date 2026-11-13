@@ -38,7 +38,7 @@ Check(ctor.GetCustomAttribute<System.ComponentModel.Composition.ImportingConstru
 Check(ctor.GetParameters().All(p => p.ParameterType.IsInterface), $"constructor takes only N.I.N.A. services ({ctor.GetParameters().Length})");
 Check(typeof(NINA.Sequencer.Container.IDeepSkyObjectContainer).IsAssignableFrom(containerType), "is an IDeepSkyObjectContainer (images get the target name)");
 Check(typeof(NINA.Sequencer.Container.SequentialContainer).IsAssignableFrom(containerType), "is a SequentialContainer");
-foreach (var prop in new[] { "DataFolder", "PlateSolve", "ParkAtEnd" })
+foreach (var prop in new[] { "DataFolder", "PlateSolve", "ParkAtEnd", "ParkWhileWaiting", "MeasureExposure", "TargetPeakPercent", "BeforeEachTarget", "AfterEachTarget" })
     Check(containerType.GetProperty(prop)?.GetCustomAttribute<Newtonsoft.Json.JsonPropertyAttribute>() is not null, $"{prop} is saved with the sequence");
 
 // The template resource dictionary parses and holds the icon and the data template.
@@ -49,6 +49,11 @@ Check(templates.Contains(new System.Windows.DataTemplateKey(containerType)), "da
 // The observatory adapter implements the core's interface, so the tested NightRunner is what drives N.I.N.A.
 Check(typeof(IObservatory).IsAssignableFrom(typeof(StarCadence.Nina.NinaObservatory)), "NinaObservatory is an IObservatory");
 Check(StarCadence.Nina.StarCadenceNightContainer.DefaultDataFolder().EndsWith("StarCadence"), "default data folder under Documents");
+
+// Run nights inside N.I.N.A.'s own sequencer classes with stand-in equipment.
+Console.WriteLine("\nInside N.I.N.A.'s sequencer:");
+try { await StarCadence.Nina.Tests.NightInSequencer.RunAll(Check); }
+catch (Exception e) { Check(false, "sequencer tests threw: " + e); }
 
 Console.WriteLine(failures.Count == 0 ? "\nall N.I.N.A. plug-in checks passed" : $"\n{failures.Count} check(s) failed");
 return failures.Count == 0 ? 0 : 1;

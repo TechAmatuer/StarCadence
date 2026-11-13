@@ -4,6 +4,7 @@
 // N.I.N.A. reads these attributes to describe the plug-in (its plugin manager and the manifest tool use them).
 
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 [assembly: Guid("7D9D9D1E-5C3B-4C2F-9A9E-2B3F6E0C5A11")]
@@ -12,8 +13,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("StarCadence contributors")]
 [assembly: AssemblyProduct("StarCadence")]
 [assembly: AssemblyCopyright("MPL-2.0")]
-[assembly: AssemblyVersion("0.3.1.0")]
-[assembly: AssemblyFileVersion("0.3.1.0")]
+[assembly: AssemblyVersion("0.4.0.0")]
+[assembly: AssemblyFileVersion("0.4.0.0")]
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.2.0.9001")]
 [assembly: AssemblyMetadata("License", "MPL-2.0")]
 [assembly: AssemblyMetadata("LicenseURL", "https://www.mozilla.org/en-US/MPL/2.0/")]
@@ -34,3 +35,5 @@ Add the **StarCadence Night** instruction to a sequence (after your usual unpark
 Set up StarCadence first (double-click StarCadence.exe: observatory, filters, targets). The plug-in reads the same settings folder (Documents\StarCadence by default).
 
 StarCadence is free and open source. If it helps your observing, you can support it: https://github.com/TechAmatuer/StarCadence#support-starcadence")]
+
+[assembly: InternalsVisibleTo("StarCadence.Nina.Tests")]

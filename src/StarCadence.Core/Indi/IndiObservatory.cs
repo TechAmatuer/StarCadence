@@ -227,5 +227,15 @@ public sealed class IndiObservatory : IObservatory, IAsyncDisposable {
         }
     }
 
+    /// <summary>Stop tracking while nothing is being observed, so the mount does not track into the meridian or a limit.
+    /// The next slew (ON_COORD_SET = TRACK) starts tracking again.</summary>
+    public async Task WaitingAsync(TimeSpan duration, CancellationToken ct) {
+        if (_mount == "" || !_client.Connected || _client.Get(_mount, "TELESCOPE_TRACK_STATE") is null) return;
+        var park = _client.Get(_mount, "TELESCOPE_PARK");
+        if (park is not null && park.Elements.TryGetValue("PARK", out var parked) && parked.On) return;
+        await _client.SelectAsync(_mount, "TELESCOPE_TRACK_STATE", "TRACK_OFF", ct).ConfigureAwait(false);
+        _log($"INDI: tracking off while waiting ({duration.TotalMinutes:0} min)");
+    }
+
     public ValueTask DisposeAsync() => _client.DisposeAsync();
 }

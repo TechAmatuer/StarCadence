@@ -24,6 +24,14 @@ public interface IObservatory {
     Task<bool> IsSafeAsync(CancellationToken ct) => Task.FromResult(true);
     /// <summary>Called once when the night is over (park the mount, close up); optional.</summary>
     Task FinishAsync(CancellationToken ct) => Task.CompletedTask;
+    /// <summary>The telescope is on the target (slewed or centred) and exposures are about to start: run the
+    /// person's "before each target" steps here (autofocus, for example). Optional.</summary>
+    Task TargetReadyAsync(string target, CancellationToken ct) => Task.CompletedTask;
+    /// <summary>The target's exposures are over (<paramref name="completed"/> false when it failed part-way). Optional.</summary>
+    Task TargetDoneAsync(string target, bool completed, CancellationToken ct) => Task.CompletedTask;
+    /// <summary>Nothing will be observed for about <paramref name="duration"/>: stop tracking and guiding (or park) so the
+    /// mount does not track into the meridian or a limit while it waits. Called once when a wait begins. Optional.</summary>
+    Task WaitingAsync(TimeSpan duration, CancellationToken ct) => Task.CompletedTask;
 }
 
 /// <summary>Time source, so the runner can be tested (and demonstrated) at any speed.</summary>

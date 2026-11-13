@@ -68,6 +68,9 @@ namespace StarCadence.Nina {
         private string dataFolder = DefaultDataFolder();
         private bool plateSolve = true;
         private bool parkAtEnd = false;
+        private bool parkWhileWaiting = false;
+        private bool measureExposure = false;
+        private double targetPeakPercent = 60;
         private string statusText = "Not started";
         private string currentText = "";
         private string nextText = "";
@@ -106,7 +109,17 @@ namespace StarCadence.Nina {
             this.nighttimeCalculator = nighttimeCalculator;
             this.safetyMonitorMediator = safetyMonitorMediator;
             Target = EmptyTarget();
-            Task.Run(() => NighttimeData = nighttimeCalculator.Calculate());
+            BeforeEachTarget = NewSlot("Before each target");
+            AfterEachTarget = NewSlot("After each target");
+            Task.Run(() => { try { NighttimeData = nighttimeCalculator?.Calculate(); } catch (Exception) { } });
+        }
+
+        // Like Target Scheduler's event containers: ordinary N.I.N.A. instruction sets kept on this instruction (and saved
+        // with the sequence), run by StarCadence at the right moment of every target.
+        private SequentialContainer NewSlot(string name) {
+            var slot = new SequentialContainer { Name = name, Category = "StarCadence" };
+            slot.AttachNewParent(this);
+            return slot;
         }
 
         public static string DefaultDataFolder() {
@@ -127,6 +140,42 @@ namespace StarCadence.Nina {
         [JsonProperty]
         public bool ParkAtEnd { get => parkAtEnd; set { parkAtEnd = value; RaisePropertyChanged(); } }
 
+        /// <summary>Park during waits of 10 minutes or more (otherwise tracking and guiding just stop while waiting).</summary>
+        [JsonProperty]
+        public bool ParkWhileWaiting { get => parkWhileWaiting; set { parkWhileWaiting = value; RaisePropertyChanged(); } }
+
+        /// <summary>Set each target's exposure from a test frame (per filter, once a night), like the ExoPlanets plug-in's Calculate Exposure Time.</summary>
+        [JsonProperty]
+        public bool MeasureExposure { get => measureExposure; set { measureExposure = value; RaisePropertyChanged(); } }
+
+        /// <summary>Where the target star's peak should land, in percent of the camera's full scale (20-90).</summary>
+        [JsonProperty]
+        public double TargetPeakPercent { get => targetPeakPercent; set { targetPeakPercent = Math.Clamp(value, 20, 90); RaisePropertyChanged(); } }
+
+        /// <summary>Instructions run on each target after the slew or centring and before its exposures (autofocus, for example).</summary>
+        [JsonProperty]
+        public SequentialContainer BeforeEachTarget { get; set; }
+
+        /// <summary>Instructions run after each target's exposures.</summary>
+        [JsonProperty]
+        public SequentialContainer AfterEachTarget { get; set; }
+
+        /// <summary>For tests: the clock the night runs on (the computer's clock by default).</summary>
+        internal IClock Clock { get; set; } = new SystemClock();
+
+        /// <summary>For tests: makes the observatory adapter (N.I.N.A.'s own instructions by default).</summary>
+        internal Func<NinaRunOptions, IReadOnlyList<FilterSpec>, Action<string>, Action<string, Coordinates>, NinaObservatory> ObservatoryFactory { get; set; }
+
+        public override void Initialize() {
+            base.Initialize();
+            foreach (var slot in Slots()) { slot.AttachNewParent(this); slot.Initialize(); }
+        }
+
+        private IEnumerable<SequentialContainer> Slots() {
+            if (BeforeEachTarget != null) yield return BeforeEachTarget;
+            if (AfterEachTarget != null) yield return AfterEachTarget;
+        }
+
         public string StatusText { get => statusText; private set { statusText = value; RaisePropertyChanged(); } }
         public string CurrentText { get => currentText; private set { currentText = value; RaisePropertyChanged(); } }
         public string NextText { get => nextText; private set { nextText = value; RaisePropertyChanged(); } }
@@ -143,13 +192,21 @@ namespace StarCadence.Nina {
         private void SetTarget(string name, Coordinates coords) {
             var p = profileService.ActiveProfile.AstrometrySettings;
             var t = new InputTarget(Angle.ByDegree(p.Latitude), Angle.ByDegree(p.Longitude), p.Horizon);
-            var dso = new DeepSkyObject(name, coords, p.Horizon) { Name = name };
-            dso.SetDateAndPosition(NighttimeCalculator.GetReferenceDate(DateTime.Now), p.Latitude, p.Longitude);
-            t.DeepSkyObject = dso;
+            try {
+                var dso = new DeepSkyObject(name, coords, p.Horizon) { Name = name };
+                dso.SetDateAndPosition(NighttimeCalculator.GetReferenceDate(DateTime.Now), p.Latitude, p.Longitude);
+                t.DeepSkyObject = dso;
+            } catch (Exception e) {
+                Logger.Warning($"StarCadence: could not prepare the altitude chart for {name}: {e.Message}");
+            }
             t.TargetName = name;
             t.InputCoordinates = new InputCoordinates(coords);
             t.Expanded = false;
             Target = t;
+        }
+
+        private static void Toast(string message, bool error = false) {
+            try { if (error) Notification.ShowError(message); else Notification.ShowInformation(message); } catch (Exception) { /* no N.I.N.A. window (tests) */ }
         }
 
         public string ConfigPath => Path.Combine(DataFolder ?? "", "config.json");
@@ -172,6 +229,9 @@ namespace StarCadence.Nina {
             }
             if (!cameraMediator.GetInfo().Connected) issues.Add("Camera not connected");
             if (!telescopeMediator.GetInfo().Connected) issues.Add("Telescope not connected");
+            foreach (var slot in Slots()) {
+                if (!slot.Validate()) issues.AddRange(slot.GetItemsSnapshot().OfType<NINA.Sequencer.Validations.IValidatable>().SelectMany(v => v.Issues ?? new List<string>()).Select(i => $"{slot.Name}: {i}"));
+            }
             Issues = issues;
             RaisePropertyChanged(nameof(Issues));
             return issues.Count == 0;
@@ -184,9 +244,6 @@ namespace StarCadence.Nina {
             catch (Exception e) { throw new SequenceEntityFailedException("StarCadence settings could not be read: " + e.Message); }
             var loader = new SourceLoader(cfg, DataFolder, null);
             var historyPath = Path.IsPathRooted(cfg.HistoryFile) ? cfg.HistoryFile : Path.Combine(DataFolder, cfg.HistoryFile);
-            var observatory = new NinaObservatory(this, SetTarget, progress, profileService, telescopeMediator, guiderMediator, cameraMediator,
-                imagingMediator, imageSaveMediator, imageHistoryVM, filterWheelMediator, domeMediator, domeFollower, plateSolverFactory,
-                windowServiceFactory, safetyMonitorMediator, PlateSolve, ParkAtEnd);
             var runsDir = Path.Combine(DataFolder, "runs");
             Directory.CreateDirectory(runsDir);
             var logFile = Path.Combine(runsDir, "nina-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".log");
@@ -197,7 +254,21 @@ namespace StarCadence.Nina {
             // The PC must not go to sleep in the middle of the night (N.I.N.A. may do this too; asking twice is harmless).
             using var awake = KeepAwake.Start("N.I.N.A. is running a StarCadence night");
             Log(awake.How);
-            var runner = new NightRunner(cfg, observatory, new SystemClock(), now => loader.LoadAll(now).SelectMany(r => r.Targets), historyPath, Log,
+            // No horizon in StarCadence's settings: use the one in this N.I.N.A. profile, as Target Scheduler does.
+            if (cfg.Site.Horizon.Count == 0 && profileService.ActiveProfile.AstrometrySettings.Horizon is { } horizon) {
+                cfg.Site.Horizon = Enumerable.Range(0, 72).Select(i => new HorizonPoint(i * 5, horizon.GetAltitude(i * 5))).ToList();
+                Log($"using this N.I.N.A. profile's custom horizon (highest {cfg.Site.Horizon.Max(h => h.Alt):0} deg)");
+            }
+            var options = new NinaRunOptions {
+                PlateSolve = PlateSolve, ParkAtEnd = ParkAtEnd, ParkWhileWaiting = ParkWhileWaiting,
+                MeasureExposure = MeasureExposure, TargetPeakFraction = TargetPeakPercent / 100.0,
+            };
+            foreach (var slot in Slots()) slot.AttachNewParent(this);   // a sequence loaded from a file does not set this
+            var observatory = ObservatoryFactory?.Invoke(options, cfg.Filters, Log, SetTarget)
+                ?? new NinaObservatory(this, SetTarget, progress, profileService, telescopeMediator, guiderMediator, cameraMediator,
+                    imagingMediator, imageSaveMediator, imageHistoryVM, filterWheelMediator, domeMediator, domeFollower, plateSolverFactory,
+                    windowServiceFactory, safetyMonitorMediator, options, cfg.Filters, BeforeEachTarget, AfterEachTarget, Log);
+            var runner = new NightRunner(cfg, observatory, Clock, now => loader.LoadAll(now).SelectMany(r => r.Targets), historyPath, Log,
                 new RunnerOptions { WaitForDark = true });
             runner.StatusChanged += st => {
                 StatusText = st.Message;
@@ -206,7 +277,7 @@ namespace StarCadence.Nina {
                 CountsText = $"{st.BlocksDone} targets done, {st.ExposuresTaken} exposures" + (st.BlocksFailed > 0 ? $", {st.BlocksFailed} failed" : "");
                 progress?.Report(new ApplicationStatus { Source = "StarCadence", Status = st.Message });
             };
-            runner.BlockStarted += b => Notification.ShowInformation($"StarCadence: {b.Target} ({b.Kind})");
+            runner.BlockStarted += b => Toast($"StarCadence: {b.Target} ({b.Kind})");
             try {
                 var done = await runner.RunAsync(token);
                 StatusText = $"Night finished: {done} targets.";
@@ -218,7 +289,7 @@ namespace StarCadence.Nina {
             } catch (Exception e) {
                 StatusText = "Failed: " + e.Message;
                 Target = EmptyTarget();
-                Notification.ShowError("StarCadence Night: " + e.Message);
+                Toast("StarCadence Night: " + e.Message, error: true);
                 throw new SequenceEntityFailedException(e.Message, e);
             }
         }
@@ -233,6 +304,9 @@ namespace StarCadence.Nina {
                 DataFolder = DataFolder,
                 PlateSolve = PlateSolve,
                 ParkAtEnd = ParkAtEnd,
+                ParkWhileWaiting = ParkWhileWaiting,
+                MeasureExposure = MeasureExposure,
+                TargetPeakPercent = TargetPeakPercent,
                 Items = new ObservableCollection<ISequenceItem>(Items.Select(i => i.Clone() as ISequenceItem)),
                 Triggers = new ObservableCollection<ISequenceTrigger>(Triggers.Select(t => t.Clone() as ISequenceTrigger)),
                 Conditions = new ObservableCollection<ISequenceCondition>(Conditions.Select(c => c.Clone() as ISequenceCondition)),
@@ -240,6 +314,9 @@ namespace StarCadence.Nina {
             foreach (var item in clone.Items) item.AttachNewParent(clone);
             foreach (var condition in clone.Conditions) condition.AttachNewParent(clone);
             foreach (var trigger in clone.Triggers) trigger.AttachNewParent(clone);
+            if (BeforeEachTarget != null) { clone.BeforeEachTarget = (SequentialContainer)BeforeEachTarget.Clone(); clone.BeforeEachTarget.Name = BeforeEachTarget.Name; }
+            if (AfterEachTarget != null) { clone.AfterEachTarget = (SequentialContainer)AfterEachTarget.Clone(); clone.AfterEachTarget.Name = AfterEachTarget.Name; }
+            foreach (var slot in clone.Slots()) slot.AttachNewParent(clone);
             return clone;
         }
 

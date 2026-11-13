@@ -632,6 +632,9 @@ sealed class FakeObservatory : StarCadence.Core.Run.IObservatory {
     }
     public Task<bool> IsSafeAsync(CancellationToken ct) => Task.FromResult(Safe());
     public Task FinishAsync(CancellationToken ct) { Finished = true; return Task.CompletedTask; }
+    public Task TargetReadyAsync(string target, CancellationToken ct) { Actions.Add("ready " + target); return Task.CompletedTask; }
+    public Task TargetDoneAsync(string target, bool completed, CancellationToken ct) { Actions.Add($"done {target} {(completed ? "ok" : "failed")}"); return Task.CompletedTask; }
+    public Task WaitingAsync(TimeSpan duration, CancellationToken ct) { Actions.Add($"wait {duration.TotalMinutes:0}"); return Task.CompletedTask; }
 }
 
 static class RunnerTests {
@@ -663,7 +666,7 @@ static class RunnerTests {
         foreach (var a in obs.Actions) {
             if (a.StartsWith("slew ")) lastSlew = a[5..];
             else if (a.StartsWith("filter ")) lastFilter = a[7..];
-            else { var parts = a.Split(' '); A.True(parts[1] == lastSlew && parts[2] == lastFilter, "exposure after slew and filter: " + a); }
+            else if (a.StartsWith("expose ")) { var parts = a.Split(' '); A.True(parts[1] == lastSlew && parts[2] == lastFilter, "exposure after slew and filter: " + a); }
         }
         A.Eq(runner.Status.Phase, StarCadence.Core.Run.RunnerPhase.Finished, "finished phase");
         File.Delete(hist);
@@ -810,6 +813,49 @@ static class RunnerTests {
         } catch (Exception) { return null; }
     }
 
+    [Test] static void BeforeAndAfterEachTargetAndWaitsAreSignalled() {
+        // Same night as the transit test: a fixed window later in the night means a wait, and every target is bracketed.
+        var c = Fx.Cfg();
+        var n = Fx.Night(c);
+        var midUtc = n.StartUtc.AddHours(3);
+        var midJd = AstroTime.JulianDate(midUtc);
+        var tr = new Target { Name = "Tr-1b", RaDeg = 75, DecDeg = 40, Kind = TargetKind.Transit, Mag = 11, PeriodDays = 3.1, DurationHours = 1.0, Priority = 1,
+            EpochJd = midJd + AstroTime.TtMinusUtcSeconds / 86400 + Sun.HeliocentricCorrectionDays(midJd, 75, 40) };
+        var (runner, obs, clock, hist, log) = Make(c, new[] { tr }, n.StartUtc, new StarCadence.Core.Run.RunnerOptions { EndMargin = TimeSpan.FromHours(7) });
+        runner.RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+        var a = obs.Actions;
+        A.True(a.Count > 0 && a[0].StartsWith("wait "), "told the mount it is waiting before the transit window: " + string.Join(" | ", a.Take(3)));
+        A.True(!a.Zip(a.Skip(1)).Any(p => p.First.StartsWith("wait ") && p.Second.StartsWith("wait ")), "one wait signal per wait, not one per re-check");
+        var slew = a.IndexOf("slew Tr-1b"); var ready = a.IndexOf("ready Tr-1b"); var firstExpose = a.FindIndex(x => x.StartsWith("expose Tr-1b"));
+        var done = a.IndexOf("done Tr-1b ok"); var lastExpose = a.FindLastIndex(x => x.StartsWith("expose Tr-1b"));
+        A.True(slew >= 0 && slew < ready && ready < firstExpose, "before-target steps run after the slew and before the first exposure");
+        A.True(done > lastExpose, "after-target steps run after the last exposure");
+        File.Delete(hist);
+    }
+
+    [Test] static void FailedTargetStillRunsAfterTargetSteps() {
+        var c = Fx.Cfg();
+        var n = Fx.Night(c);
+        var stars = new[] { Fx.Star("Ok1", 60, 40), Fx.Star("Ok2", 70, 40) };
+        var (runner, obs, clock, hist, log) = Make(c, stars, n.StartUtc.AddMinutes(1), new StarCadence.Core.Run.RunnerOptions { EndMargin = n.EndUtc - n.StartUtc - TimeSpan.FromHours(1) });
+        var failing = new FailingExposure(obs, after: 2);
+        var runner2 = new StarCadence.Core.Run.NightRunner(c, failing, clock, _ => stars, hist, log.Add,
+            new StarCadence.Core.Run.RunnerOptions { EndMargin = n.EndUtc - n.StartUtc - TimeSpan.FromHours(1) });
+        runner2.RunAsync(CancellationToken.None).GetAwaiter().GetResult();
+        A.True(obs.Actions.Any(x => x.EndsWith(" failed")), "after-target steps ran for the target that failed: " + string.Join(" | ", obs.Actions.Where(x => x.StartsWith("done"))));
+        File.Delete(hist);
+    }
+
+    sealed class FailingExposure : StarCadence.Core.Run.IObservatory {
+        readonly FakeObservatory _inner; int _left;
+        public FailingExposure(FakeObservatory inner, int after) { _inner = inner; _left = after; }
+        public Task SlewAsync(double ra, double dec, string name, CancellationToken ct) => _inner.SlewAsync(ra, dec, name, ct);
+        public Task SetFilterAsync(string f, CancellationToken ct) => _inner.SetFilterAsync(f, ct);
+        public Task ExposeAsync(StarCadence.Core.Run.ExposureRequest r, CancellationToken ct) => --_left < 0 && _left > -2 ? throw new IOException("camera timed out") : _inner.ExposeAsync(r, ct);
+        public Task TargetReadyAsync(string t, CancellationToken ct) => _inner.TargetReadyAsync(t, ct);
+        public Task TargetDoneAsync(string t, bool ok, CancellationToken ct) => _inner.TargetDoneAsync(t, ok, ct);
+    }
+
     [Test] static void ScaledClockRunsFast() {
         var start = new DateTime(2026, 12, 3, 22, 0, 0, DateTimeKind.Utc);
         var clk = new StarCadence.Core.Run.ScaledClock(start, 600);
@@ -821,6 +867,67 @@ static class RunnerTests {
 }
 
 /* ---------- INDI, against a real INDI server when one is available ---------- */
+
+static class ExposureMeterTests {
+    // A synthetic 400x300 frame: sky 1000 ADU with noise 20, a Gaussian star, optionally a hot pixel and a neighbour.
+    static ushort[] Frame(double starX, double starY, double peak, double sigmaPx = 2.0, int seed = 1, (int x, int y)? hot = null,
+                          (double x, double y, double peak)? neighbour = null, int w = 400, int h = 300) {
+        var rng = new Random(seed);
+        var px = new ushort[w * h];
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++) {
+                double v = 1000 + 20 * Gauss(rng);
+                v += peak * Math.Exp(-((x - starX) * (x - starX) + (y - starY) * (y - starY)) / (2 * sigmaPx * sigmaPx));
+                if (neighbour is { } nb) v += nb.peak * Math.Exp(-((x - nb.x) * (x - nb.x) + (y - nb.y) * (y - nb.y)) / (2 * sigmaPx * sigmaPx));
+                px[y * w + x] = (ushort)Math.Clamp(Math.Round(v), 0, 65535);
+            }
+        if (hot is { } hp) px[hp.y * w + hp.x] = 65535;
+        return px;
+    }
+    static double Gauss(Random r) => Math.Sqrt(-2 * Math.Log(1 - r.NextDouble())) * Math.Cos(2 * Math.PI * r.NextDouble());
+
+    [Test] static void FindsTheStarNearTheCentreAndIgnoresAHotPixel() {
+        var px = Frame(205, 147, 8000, hot: (199, 151));
+        var m = StarCadence.Core.Run.ExposureMeter.Measure(px, 400, 300, 200, 150, 30, 65535);
+        A.True(Math.Abs(m.X - 205) <= 1 && Math.Abs(m.Y - 147) <= 1, $"star found at {m.X},{m.Y}");
+        A.Near(m.Background, 1000, 5, "sky level");
+        A.Near(m.Noise, 20, 4, "sky noise");
+        A.True(m.PeakAdu > 6000 && m.PeakAdu < 8100, $"peak above sky {m.PeakAdu:0}");
+        A.True(!m.Saturated && m.Clear, "not saturated, clearly measurable");
+    }
+
+    [Test] static void SuggestsTheExposureThatReachesTheTargetLevel() {
+        // A 10 s test frame gives a peak of ~8000 above a sky of 1000. For 60% of 65535 (39321): 10 * (39321-1000)/8000 = ~48 s -> rounded down to 45.
+        var px = Frame(200, 150, 8000, sigmaPx: 3.0);
+        var m = StarCadence.Core.Run.ExposureMeter.Measure(px, 400, 300, 200, 150, 30, 65535);
+        var s = StarCadence.Core.Run.ExposureMeter.Suggest(10, m, 65535, 0.6, 1, 600);
+        A.True(s >= 40 && s <= 48, $"suggested {s} s");
+        A.Eq(StarCadence.Core.Run.ExposureMeter.Suggest(10, m, 65535, 0.6, 1, 30), 30.0, "kept within the maximum");
+        A.True(StarCadence.Core.Run.ExposureMeter.NextTest(10, m, 1, 600) is null, "no second test needed");
+    }
+
+    [Test] static void SaturatedOrFaintTestsAskForAnotherTry() {
+        var bright = Frame(200, 150, 90000, sigmaPx: 2.5);   // clipped at 65535
+        var mb = StarCadence.Core.Run.ExposureMeter.Measure(bright, 400, 300, 200, 150, 30, 65535);
+        A.True(mb.Saturated, "saturated star detected");
+        A.Eq(StarCadence.Core.Run.ExposureMeter.NextTest(10, mb, 1, 600), 5.0, "halve the test exposure");
+        var faint = Frame(200, 150, 60, sigmaPx: 2.5);
+        var mf = StarCadence.Core.Run.ExposureMeter.Measure(faint, 400, 300, 200, 150, 30, 65535);
+        A.True(!mf.Clear, $"too faint to scale from ({mf.PeakAdu:0} over noise {mf.Noise:0})");
+        A.Eq(StarCadence.Core.Run.ExposureMeter.NextTest(10, mf, 1, 600), 40.0, "lengthen the test exposure");
+        A.Eq(StarCadence.Core.Run.ExposureMeter.NextTest(200, mf, 1, 600), 600.0, "but not past the maximum");
+    }
+
+    [Test] static void ABrighterNeighbourMakesItShorterNeverSaturating() {
+        var px = Frame(200, 150, 5000, neighbour: (215, 140, 20000));
+        var m = StarCadence.Core.Run.ExposureMeter.Measure(px, 400, 300, 200, 150, 30, 65535);
+        A.True(Math.Abs(m.X - 215) <= 1, "the brighter star inside the search circle is the one measured");
+        var s = StarCadence.Core.Run.ExposureMeter.Suggest(10, m, 65535, 0.6, 1, 600);
+        A.True(s * 5000 / 10 + 1000 < 0.6 * 65535, "so the target ends up below the level too");
+        A.Eq(StarCadence.Core.Run.ExposureMeter.FullScale(12), 4095.0, "12-bit full scale");
+        A.Near(StarCadence.Core.Run.ExposureMeter.ArcsecPerPixel(3.76, 530), 1.463, 0.001, "image scale");
+    }
+}
 
 static class IndiTests {
     [Test] static void FitsHeaderPatching() {
