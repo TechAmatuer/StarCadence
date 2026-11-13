@@ -92,7 +92,14 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Build the plug-in against N.I.N.A.'s plug-in library
         run: dotnet build src/StarCadence.Nina -c Release
-      - name: Check it the way N.I.N.A.'s plug-in loader will (exports, metadata, templates)
+      - name: Fetch N.I.N.A.'s native astronomy files for the tests (NOVAS, SOFA, JPL ephemeris; a real N.I.N.A. install has them)
+        shell: bash
+        run: |
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/tcpalmer/nina.plugin.targetscheduler ts-external
+          git -C ts-external sparse-checkout set NINA.Plugin.TargetScheduler.Test/External
+          cp -r ts-external/NINA.Plugin.TargetScheduler.Test/External tests/StarCadence.Nina.Tests/External
+          ls -R tests/StarCadence.Nina.Tests/External | head -20
+      - name: Check it the way N.I.N.A.'s plug-in loader will, then run nights inside N.I.N.A.'s sequencer
         run: dotnet run --project tests/StarCadence.Nina.Tests -c Release
       - name: Package the plug-in and make its manifest with N.I.N.A.'s own tool
         shell: pwsh

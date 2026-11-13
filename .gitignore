@@ -13,3 +13,5 @@ ci-app/
 ci-ui/
 .DS_Store
 runs/
+tests/StarCadence.Nina.Tests/External/
+ts-external/

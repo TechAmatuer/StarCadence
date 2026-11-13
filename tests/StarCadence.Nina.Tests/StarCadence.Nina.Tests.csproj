@@ -14,6 +14,10 @@
     <PackageReference Include="Moq" Version="4.20.72" />
   </ItemGroup>
   <ItemGroup>
+    <!-- N.I.N.A.'s native astronomy files (fetched by CI; a real N.I.N.A. install has them). -->
+    <None Include="External\**\*" Condition="Exists('External')" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="..\..\examples\config.json;..\..\examples\sample-targets.csv;..\..\examples\sample-exoclock.json" Link="examples\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
