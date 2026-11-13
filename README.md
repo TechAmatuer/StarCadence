@@ -293,17 +293,21 @@ Without a key, export a CSV from the Target Tool website and set `sources.target
   altitudes within 0.013°, Moon separation within 0.006°, Moon illumination within 0.002.
 - **Dark-time limits** fall where the Sun really is at the limit altitude (within 0.005°).
 - **Transit and minimum times** convert BJD/HJD to UTC within 6 seconds.
-- **48 automated tests** check the planner's rules (no overlaps, every block observable, windows kept, cadence
+- **54 automated tests** check the planner's rules (no overlaps, every block observable, windows kept, cadence
   spacing), the sources and exporters, and the **night runner**: a whole night against a fake observatory, transits
   started and stopped on time, failed targets retried later, unsafe weather pausing the night, clean stops, a history
-  file that is locked or unwritable, and keeping the computer awake. GitHub Actions runs them on Windows, macOS (Apple
+  file that is locked or unwritable, keeping the computer awake, the steps before and after each target, the waits, and the
+  exposure meter on synthetic stars (noise, hot pixels, saturation, a brighter neighbour). GitHub Actions runs them on Windows, macOS (Apple
   Silicon) and Linux on every change (badge at the top), and on Windows again under Portuguese, German, Thai and
   Turkish number and date formats. It starts the packaged program's app window on all three systems, drives it in a
   real browser on Linux, and runs a night through a **real INDI server** with simulated mount, filter wheel and
   camera, checking the saved FITS files.
 - **The N.I.N.A. plug-in** is built on GitHub's Windows machines against N.I.N.A.'s plug-in library 3.2, checked the
   way N.I.N.A.'s plug-in loader sees it (exports, metadata, templates), packaged the way N.I.N.A.'s installer unpacks
-  plug-ins, and its manifest is made with N.I.N.A.'s own tool and validated against N.I.N.A.'s schema.
+  plug-ins, and its manifest is made with N.I.N.A.'s own tool and validated against N.I.N.A.'s schema. Whole nights are
+  then run inside N.I.N.A.'s own sequencer classes with stand-in equipment: triggers placed on the instruction and above
+  it fire between steps and see the current target, the before/after-target steps run at the right moments, waits stop
+  tracking or park, measured exposures are used, and stopping the sequence stops the night and parks.
 - **The app window** only listens on this computer (127.0.0.1); every change needs a key that only its own page
   has, so other web pages can't use it.
 - **File formats**: Ekos files follow the KStars source; the Target Scheduler CSV is read back the way its importer
