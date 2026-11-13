@@ -32,7 +32,10 @@ try {
     if ($m.Success) { $url = $m.Value }
 } catch { "download page not reachable ($($_.Exception.Message)); using $url" }
 "installer: $url"
-Invoke-WebRequest $url -OutFile nina-setup.zip -TimeoutSec 600
+for ($try = 1; ; $try++) {
+    try { Invoke-WebRequest $url -OutFile nina-setup.zip -TimeoutSec 900; break }
+    catch { if ($try -ge 3) { throw }; "download attempt $try failed ($($_.Exception.Message)); trying again"; Start-Sleep 20 }
+}
 Expand-Archive nina-setup.zip -DestinationPath nina-setup -Force
 Get-ChildItem nina-setup -Recurse -File | ForEach-Object { "  $($_.Name) $([math]::Round($_.Length / 1MB, 1)) MB" }
 $setup = Get-ChildItem nina-setup -Recurse -File -Include *.exe | Select-Object -First 1
