@@ -36,6 +36,20 @@ function Wait-Ping([int] $seconds) {
     $false
 }
 
+function Ping-Once { try { (& curl -s -m 2 "$base/api/ping") -eq 'starcadence' } catch { $false } }
+function Show-Who {
+    Write-Host "--- who is on port 8711"
+    if ($IsWindows) {
+        Get-NetTCPConnection -LocalPort 8711 -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, RemotePort, State, OwningProcess | Format-Table -AutoSize | Out-String | Write-Host
+        Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'starcadence' } | Select-Object ProcessId, ParentProcessId, CreationDate, CommandLine | Format-List | Out-String | Write-Host
+    } else {
+        lsof -nP -iTCP:8711 2>$null | Write-Host
+        ps -axo pid,ppid,lstart,command | Select-String -Pattern 'starcadence' -SimpleMatch | Write-Host
+        if ($appOut -and (Test-Path $appOut)) { Write-Host "--- what the app printed"; Get-Content $appOut | Write-Host }
+    }
+    & curl -s -i -m 2 "$base/api/ping" | Write-Host
+}
+
 if (Test-Path $data) { Fail "$data already exists; this check needs a computer that has never run StarCadence" }
 
 # ---- unpack ----
@@ -76,7 +90,8 @@ if ($IsWindows) {
     # Explorer starts it in its own folder with no arguments and gives it its own console window.
     $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
 } else {
-    open $app
+    $appOut = Join-Path $evidence 'app-output.txt'
+    open --stdout $appOut --stderr $appOut $app      # same launch as a double-click, but keeps what it prints
     if ($LASTEXITCODE -ne 0) { Fail "macOS would not open StarCadence.app" }
 }
 if (-not (Wait-Ping 90)) {
@@ -149,9 +164,16 @@ if ($IsWindows) {
     Start-Sleep 3
 }
 if (-not (Wait-Ping 5)) { Fail "the app stopped after the second double-click" }
+if ($IsWindows) { "first copy is process $($proc.Id), still running: $(-not $proc.HasExited)" }
 Post '/api/quit' | Out-Null
-for ($i = 0; $i -lt 30 -and (Wait-Ping 1); $i++) { }
-if (Wait-Ping 1) { Fail "the app is still running 30 seconds after Quit" }
+$clock = [Diagnostics.Stopwatch]::StartNew(); $down = $null
+while ($clock.Elapsed.TotalSeconds -lt 90) {
+    if (-not (Ping-Once)) { $down = $clock.Elapsed.TotalSeconds; break }
+    if ([int]$clock.Elapsed.TotalSeconds % 15 -eq 0) { "  still answering after $([int]$clock.Elapsed.TotalSeconds) s" }
+    Start-Sleep 1
+}
+if ($null -eq $down) { Show-Who; Fail "the app is still answering 90 seconds after Quit" }
+"stopped answering $([math]::Round($down, 1)) s after Quit"
 if ($IsWindows) {
     if (-not $proc.WaitForExit(30000)) { Fail "StarCadence.exe did not exit after Quit" }
     if ($proc.ExitCode -ne 0) { Fail "StarCadence.exe exited with code $($proc.ExitCode)" }
