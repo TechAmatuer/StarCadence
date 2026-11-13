@@ -293,6 +293,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: out
+          pattern: StarCadence-*      # the downloads only, not the test evidence
           merge-multiple: true
       - name: Upload the downloads (Windows, Mac, Linux, N.I.N.A. plug-in)
         env:
