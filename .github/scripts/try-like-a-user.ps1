@@ -110,7 +110,10 @@ if ($browser) {
     "browser: $browser, page after its scripts ran: $($dom.Length) characters"
     if ($dom -notmatch "v$([regex]::Escape($Version))") { Fail "the page did not show the version after its scripts ran (see evidence/page-after-scripts.html)" }
     if ($dom -notmatch 'Save changes') { Fail "the page did not open on Setup for a first run" }
-    if ($dom -match 'StarCadence is not answering') { Fail "the page could not reach the app" }
+    # (the page's own script contains the error text as a template, so look for a filled-in one)
+    if ($dom -match 'StarCadence is not answering: [^$]') { Fail "the page could not reach the app" }
+    "header shows: " + [regex]::Match($dom, 'id="site">([^<]*)').Groups[1].Value
+    "tabs: " + (([regex]::Matches($dom, '<button[^>]*data-tab="([^"]+)"') | ForEach-Object { $_.Groups[1].Value }) -join ', ')
 } else { "::warning::no browser found to load the page with" }
 Write-Host "::endgroup::"
 
