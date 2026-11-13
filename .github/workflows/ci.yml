@@ -238,6 +238,46 @@ jobs:
           name: StarCadence-${{ matrix.name }}
           path: StarCadence-${{ matrix.name }}.*
 
+  try-it:
+    name: try the download like a user (${{ matrix.name }})
+    needs: [package, nina]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows, os: windows-latest, file: StarCadence-windows.zip }
+          - { name: mac, os: macos-latest, file: StarCadence-mac.zip }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: StarCadence-${{ matrix.name }}
+          path: dl
+      - uses: actions/download-artifact@v4
+        if: matrix.name == 'windows'
+        with:
+          name: StarCadence-nina-plugin
+          path: dl
+      - name: Unpack, double-click, plan, rehearse, quit
+        shell: pwsh
+        run: |
+          $v = (Select-Xml -Path Directory.Build.props -XPath '//Version').Node.InnerText
+          ./.github/scripts/try-like-a-user.ps1 -Download (Resolve-Path dl/${{ matrix.file }}) -Version $v
+      - name: Load the plug-in into a real N.I.N.A.
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          $v = (Select-Xml -Path Directory.Build.props -XPath '//Version').Node.InnerText
+          ./.github/scripts/load-in-nina.ps1 -PluginZip (Resolve-Path dl/StarCadence-nina-plugin.zip) -Version $v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: try-it-evidence-${{ matrix.name }}
+          path: evidence
+          if-no-files-found: ignore
+
   release:
     name: attach downloads to the release
     if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
