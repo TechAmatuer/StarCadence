@@ -126,7 +126,7 @@ static class NightInSequencer {
 
     // ---- 4. Stopping the sequence stops the night and parks if asked ----
     static async Task StopsWhenCancelled(Action<bool, string> check) {
-        var rig = Make(parkAtEnd: true, start: -3);
+        var rig = Make(parkAtEnd: true);
         var parent = new SequentialContainer();
         parent.Add(rig.Night);
         using var cts = new CancellationTokenSource();
@@ -156,7 +156,7 @@ static class NightInSequencer {
     }
 
     // ---- The rig: stand-in N.I.N.A. services, StarCadence settings, a fast clock near the end of a night ----
-    static Rig Make(bool measure = false, bool parkAtEnd = false, double start = -1.6) {
+    static Rig Make(bool measure = false, bool parkAtEnd = false) {
         var data = Path.Combine(Path.GetTempPath(), "sc-nina-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(data);
         foreach (var f in new[] { "config.json", "sample-targets.csv", "sample-exoclock.json" })
@@ -193,16 +193,29 @@ static class NightInSequencer {
             Mock.Of<IDomeFollower>(), Mock.Of<IPlateSolverFactory>(), Mock.Of<IWindowServiceFactory>(), Mock.Of<INighttimeCalculator>(), safety.Object) {
             DataFolder = data, PlateSolve = false, ParkAtEnd = parkAtEnd, MeasureExposure = measure,
         };
-        // The last hours of the night of 3-4 December 2026 at the example site, 1500 times faster than real time.
+        // The night of 3-4 December 2026 at the example site, on a clock that moves only when something waits.
         var cfg = Config.Load(Path.Combine(data, "config.json"));
         var n = Night.From(cfg.Site, new DateTime(2026, 12, 4, 3, 0, 0, DateTimeKind.Utc), cfg.Planner.StepMinutes)!;
-        var clock = new ScaledClock(n.EndUtc.AddHours(start), 1500);
+        var clock = new VirtualClock(n.StartUtc.AddMinutes(-20));
         night.Clock = clock;
         var steps = new List<string>();
         var triggers = new List<(string, Coordinates?, Coordinates?)>();
         night.ObservatoryFactory = (options, filters, log, setTarget) => new RecordingObservatory(night, setTarget, profileService.Object, telescope.Object, guider.Object,
             camera.Object, wheel.Object, safety.Object, options, filters, log, steps, clock);
         return new Rig(night, telescope, guider, steps, triggers, data);
+    }
+}
+
+/// <summary>Simulated time: a wait moves the clock on at once, so a whole night runs in seconds and nothing depends on the computer's speed.</summary>
+sealed class VirtualClock : IClock {
+    DateTime _now;
+    public VirtualClock(DateTime startUtc) { _now = DateTime.SpecifyKind(startUtc, DateTimeKind.Utc); }
+    public DateTime UtcNow { get { lock (this) return _now; } }
+    public async Task Delay(TimeSpan span, CancellationToken ct) {
+        ct.ThrowIfCancellationRequested();
+        if (span > TimeSpan.Zero) lock (this) _now += span;
+        await Task.Yield();
+        ct.ThrowIfCancellationRequested();
     }
 }
 

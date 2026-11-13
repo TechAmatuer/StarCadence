@@ -127,6 +127,11 @@ Not planned (3):
   says at what magnitude each filter saturates. You can also make it shorten exposures for the bright limit
   (`planner.capForBrightLimit`).
 - A filter that isn't in your wheel is replaced by the nearest one (Sloan r by R, for example), and the plan says so.
+- **In N.I.N.A., the exposure can be measured instead.** Tick **Measure exposure** on the StarCadence Night instruction:
+  once a night for each target and filter, after centring, StarCadence takes a short test frame, finds the target star
+  at the centre, and sets the exposure so its peak lands at the share of the camera's range you choose (60% by
+  default), as the ExoPlanets plug-in's *Calculate Exposure Time* does. Saturated tests are retried shorter, faint
+  ones longer.
 
 ## How it decides
 
@@ -158,7 +163,7 @@ Three ways, from least to most automatic:
 
 | Your setup | What to do | Plate solving, focus, guiding |
 |---|---|---|
-| **N.I.N.A. 3.2 or newer** (Windows) | Install the **StarCadence plug-in** (`StarCadence-nina-plugin.zip` from the release page; see [its README](src/StarCadence.Nina/README-NINA.md)) and add the **StarCadence Night** instruction to your sequence. It plans, slews, centres, exposes and re-plans inside N.I.N.A. | N.I.N.A.'s own: plate-solve centring on each target; put the instruction after your autofocus step and inside your safety loop. |
+| **N.I.N.A. 3.2 or newer** (Windows) | Install the **StarCadence plug-in** (`StarCadence-nina-plugin.zip` from the release page; see [its README](src/StarCadence.Nina/README-NINA.md)) and add the **StarCadence Night** instruction to your sequence. It plans, slews, centres, exposes and re-plans inside N.I.N.A. | N.I.N.A.'s own: plate-solve centring on each target, and your triggers (Meridian Flip, Autofocus, Dither, Center After Drift) fire between its steps. Drop extra steps into its **Before each target** and **After each target** areas. |
 | **KStars/Ekos or any INDI server** (Mac, Linux, Windows, Raspberry Pi) | On the Tonight tab, **Run the night → Through an INDI server**, enter `host:port` (Ekos's INDI server is usually `localhost:7624`), press Start. Or `starcadence run --indi host:port`. | None yet: it slews, changes filters and exposes; focus first, and use a mount that points well. For plate-solve centring, export the Ekos files instead and let Ekos run them. |
 | **Rehearsal** (no hardware) | **Run the night → Simulation**, pick a speed, press Start. Or `starcadence run --simulate --from 2026-12-04T02:00:00Z --speed 600`. | Shows exactly what a night would do, in minutes. |
 
@@ -167,6 +172,32 @@ finishes the current exposure and parks the mount. While a night runs, the compu
 (the screen may still turn off). Each visit is written to `history.json` as it starts, so a
 re-plan (or tomorrow's plan) knows what has been done. Frames from an INDI run are saved under
 `images/<night>/` as FITS with `OBJECT`, `FILTER`, `RA` and `DEC` cards added.
+
+## Compared with Target Scheduler and ExoPlanets
+
+StarCadence started as a way to get what two N.I.N.A. plug-ins do, together, for photometry: Target Scheduler's
+automatic, re-planned night and ExoPlanets' transit timing and exposure calculation. Today you have to pick one: the
+ExoPlanets exposure tool can't run inside a Target Scheduler night.
+
+| | Target Scheduler | ExoPlanets | StarCadence |
+|---|---|---|---|
+| Picks the next target itself and re-plans after each | yes | no, one target per container | yes |
+| Uses N.I.N.A.'s own slew/centre, filter and exposure steps | yes | yes | yes |
+| Your triggers fire (Meridian Flip, Autofocus, Dither, Center After Drift) | yes | yes | yes |
+| Your own steps before/after each target | yes (7 slots) | in its container | yes (before and after each target) |
+| Stops tracking, or parks, while waiting | yes | no | yes |
+| Horizon, minimum altitude, Moon distance | yes, Moon avoidance per filter | N.I.N.A.'s horizon ("above horizon" filter for its target list) | yes, one Moon distance for all filters; N.I.N.A.'s horizon is used if StarCadence has none |
+| Transit and eclipse-minimum time windows | no | yes (waits for the transit) | yes |
+| Repeat cadence (every N days) | no (it collects a total) | no | yes |
+| Targets from AAVSO Target Tool, ExoClock, lists | CSV import | ExoClock, Swarthmore, AAVSO CSV | Target Tool, ExoClock, any CSV, watch list |
+| Exposure from the star's magnitude | no | no | yes |
+| Exposure measured from a test frame | no | yes | yes (optional) |
+| Comparison-star chart and star list for Siril | no | yes | no |
+| Image grading, flats per target, mosaics, several telescopes | yes | no | no |
+| Mac and Linux (INDI, Ekos) | no | no | yes |
+
+ExoPlanets finds the target in its test frame by plate-solving it; StarCadence measures the brightest star near the
+centre right after N.I.N.A.'s centring, which can only make the exposure shorter if a brighter star is close by.
 
 ## The app window
 
@@ -285,13 +316,13 @@ machines. Please open an issue if something doesn't work.
 
 ## Known limits
 
-- Meridian flips are not modelled; your observatory software handles them during a visit.
+- Meridian flips are not modelled in the plan; N.I.N.A.'s Meridian Flip trigger (or your mount software) does the flip during a visit.
 - Exposures come from the magnitude you give (or the middle of the catalogue range). Give current magnitudes for
   large-amplitude stars (Miras, novae) or the exposure can be far off.
 - The INDI runner does not plate-solve, focus or guide. It is right for short photometric exposures on a mount that
   points well, after focusing; otherwise let Ekos run the exported files.
-- The N.I.N.A. plug-in runs its own slew, filter and exposure steps, so triggers you place inside the StarCadence
-  Night container do not fire; keep autofocus, meridian-flip and safety handling in the surrounding sequence as usual.
+- In N.I.N.A., StarCadence does not grade images, take flats per target, or make comparison-star lists; use N.I.N.A.'s
+  own flat instructions (in **After each target** or at the end of the night) and your photometry software for the rest.
 
 ## Project layout
 
