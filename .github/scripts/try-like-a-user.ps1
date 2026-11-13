@@ -186,3 +186,5 @@ if ($IsWindows) {
 Get-ChildItem $data -Recurse -File | ForEach-Object { "  " + [IO.Path]::GetRelativePath($data, $_.FullName) }
 Write-Host "::endgroup::"
 "All good: $([IO.Path]::GetFileName($Download)) unpacks, opens by double-click, plans, rehearses and quits."
+$global:LASTEXITCODE = 0   # the last curl/pgrep was expected to find nothing
+exit 0

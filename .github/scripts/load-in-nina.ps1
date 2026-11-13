@@ -88,3 +88,5 @@ if ($bad) { $bad | ForEach-Object { Write-Host "::error::$_" }; throw "N.I.N.A. 
 if (-not $ok) { throw "N.I.N.A. did not report loading the StarCadence plug-in within 5 minutes (see the evidence artifact)" }
 if ($ok -notmatch [regex]::Escape($Version)) { "::warning::N.I.N.A. loaded a StarCadence version other than $Version`: $ok" }
 "N.I.N.A. $($nina.VersionInfo.ProductVersion): $ok"
+$global:LASTEXITCODE = 0
+exit 0
