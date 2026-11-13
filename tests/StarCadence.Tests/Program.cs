@@ -977,6 +977,15 @@ static class IndiTests {
             obs.SetFilterAsync("B", cts.Token).GetAwaiter().GetResult();
             obs.ExposeAsync(new StarCadence.Core.Run.ExposureRequest("Sim Target", "B", "B", 0.5, 2, 2, ra, dec, TargetKind.Variable, null, DateTime.UtcNow.AddMinutes(5)), cts.Token).GetAwaiter().GetResult();
             A.Eq(obs.FramesSaved, 2, "two frames saved");
+            // Waiting turns tracking off; the next slew turns it back on.
+            if (obs.Client.Get(obs.Mount, "TELESCOPE_TRACK_STATE") is not null) {
+                obs.WaitingAsync(TimeSpan.FromMinutes(20), cts.Token).GetAwaiter().GetResult();
+                obs.Client.WaitForAsync(obs.Mount, "TELESCOPE_TRACK_STATE", p => p["TRACK_OFF"]?.On == true, TimeSpan.FromSeconds(10), cts.Token).GetAwaiter().GetResult();
+                A.True(obs.Client.Get(obs.Mount, "TELESCOPE_TRACK_STATE")!["TRACK_OFF"]!.On, "tracking off while waiting");
+                obs.SlewAsync(ra, dec, "Sim Target", cts.Token).GetAwaiter().GetResult();
+                obs.Client.WaitForAsync(obs.Mount, "TELESCOPE_TRACK_STATE", p => p["TRACK_ON"]?.On == true, TimeSpan.FromSeconds(30), cts.Token).GetAwaiter().GetResult();
+                A.True(obs.Client.Get(obs.Mount, "TELESCOPE_TRACK_STATE")!["TRACK_ON"]!.On, "tracking back on after the next slew");
+            }
             var bytes = File.ReadAllBytes(obs.SavedFiles[0]);
             var h = StarCadence.Core.Indi.Fits.ReadHeader(bytes);
             A.True(StarCadence.Core.Indi.Fits.LooksLikeFits(bytes) && bytes.Length > 2880 * 2, $"a real FITS file ({bytes.Length} bytes)");

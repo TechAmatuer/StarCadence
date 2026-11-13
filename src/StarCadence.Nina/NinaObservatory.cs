@@ -18,7 +18,7 @@ using NINA.Equipment.Interfaces.Mediator;
 using NINA.PlateSolving.Interfaces;
 using NINA.Profile.Interfaces;
 using NINA.Sequencer.Container;
-using NINA.Sequencer.Interfaces;
+using NINA.Sequencer.Trigger;
 using NINA.Sequencer.SequenceItem;
 using NINA.Sequencer.SequenceItem.FilterWheel;
 using NINA.Sequencer.SequenceItem.Imaging;
